@@ -921,39 +921,97 @@ function ThemeCard({theme, flashMap, favs, onThemeClick, onStockSelect}) {
 }
 
 function ThemeGrid({themes, flashMap, favs, searchQuery, onThemeClick, onStockSelect}) {
-  const isSearching = searchQuery.trim().length > 0;
+  const q = searchQuery.trim();
+  const isSearching = q.length > 0;
 
-  // 상승률 순 정렬
+  // 검색 시: 전체 테마에서 종목 수집 (중복 제거)
+  const allStocks = React.useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    themes.forEach(t => t.stocks.forEach(s => {
+      if (!seen.has(s.code)) { seen.add(s.code); list.push({...s, themeName: t.name}); }
+    }));
+    return list;
+  }, [themes]);
+
+  const matchedStocks = isSearching
+    ? allStocks.filter(s => s.name.includes(q) || s.code.includes(q))
+    : [];
+
   const sorted = [...themes].sort((a, b) => b.score - a.score);
-
-  // 검색 중이면 전체, 아니면 상위 6개
-  const filtered = isSearching
-    ? sorted.filter(t => t.name.includes(searchQuery) || t.stocks.some(s => s.name.includes(searchQuery)))
+  const matchedThemes = isSearching
+    ? sorted.filter(t => t.name.includes(q) || t.stocks.some(s => s.name.includes(q)))
     : sorted.slice(0, 6);
+
+  if (isSearching) {
+    return (
+      <div className="theme-section">
+        {/* 종목 검색 결과 */}
+        {matchedStocks.length > 0 && (
+          <>
+            <div className="section-title-bar" style={{marginBottom:6}}>
+              <span className="section-title">종목</span>
+              <span className="section-subtitle">{matchedStocks.length}개</span>
+            </div>
+            <div style={{background:'#fff',borderRadius:12,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,.07)',marginBottom:14}}>
+              {matchedStocks.map((s,i) => {
+                const isUp = s.change >= 0, flash = flashMap[s.code], isFav = favs.has(s.code);
+                return (
+                  <div key={s.code}
+                    className={`rank-row${flash ? ` flash-${flash}` : ''}`}
+                    style={{gridTemplateColumns:'1fr 72px 58px', display:'flex', alignItems:'center', padding:'10px 14px', gap:8, borderBottom: i < matchedStocks.length-1 ? '1px solid var(--border)' : 'none', cursor:'pointer'}}
+                    onClick={() => onStockSelect(s, s.themeName)}>
+                    <div>
+                      <div style={{display:'flex',alignItems:'center',gap:6}}>
+                        {isFav && <span style={{fontSize:10}}>⭐</span>}
+                        <span style={{fontSize:14,fontWeight:700,color:'var(--text)'}}>{s.name}</span>
+                        <span style={{fontSize:10,color:'var(--sub)',background:'var(--primary-faint)',padding:'1px 5px',borderRadius:4}}>{s.themeName}</span>
+                      </div>
+                      <div style={{fontSize:10,color:'var(--sub)',marginTop:1}}>{s.code}</div>
+                    </div>
+                    <div style={{marginLeft:'auto',textAlign:'right'}}>
+                      <div style={{fontSize:14,fontWeight:700}} className={isUp?'up':'down'}>{fmt.price(s.price)}</div>
+                      <div style={{fontSize:11,fontWeight:600}} className={isUp?'up':'down'}>{fmt.change(s.change)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* 테마 검색 결과 */}
+        {matchedThemes.length > 0 && (
+          <>
+            <div className="section-title-bar" style={{marginBottom:6}}>
+              <span className="section-title">테마</span>
+              <span className="section-subtitle">{matchedThemes.length}개</span>
+            </div>
+            <div className="theme-grid">
+              {matchedThemes.map(t => <ThemeCard key={t.id} theme={t} flashMap={flashMap} favs={favs} onThemeClick={onThemeClick} onStockSelect={onStockSelect}/>)}
+            </div>
+          </>
+        )}
+
+        {matchedStocks.length === 0 && matchedThemes.length === 0 && (
+          <div style={{textAlign:'center',padding:'50px 0',color:'var(--sub)',fontSize:'13px'}}>
+            <div style={{fontSize:32,marginBottom:8}}>🔍</div>
+            <div>'{q}' 검색 결과가 없습니다</div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="theme-section">
       <div className="section-title-bar">
         <span className="section-title">실시간 테마</span>
         <span className="section-subtitle">상승률 순</span>
-        {!isSearching && (
-          <span style={{marginLeft:'auto',fontSize:'11px',color:'var(--sub)'}}>
-            상위 6개 · 검색으로 더보기
-          </span>
-        )}
-        {isSearching && (
-          <span style={{marginLeft:'auto',fontSize:'11px',color:'var(--primary)'}}>
-            검색결과 {filtered.length}개
-          </span>
-        )}
+        <span style={{marginLeft:'auto',fontSize:'11px',color:'var(--sub)'}}>상위 6개 · 검색으로 더보기</span>
       </div>
-      {filtered.length === 0 && isSearching && (
-        <div style={{textAlign:'center',padding:'40px 0',color:'var(--sub)',fontSize:'13px'}}>
-          검색 결과가 없습니다
-        </div>
-      )}
       <div className="theme-grid">
-        {filtered.map(theme=><ThemeCard key={theme.id} theme={theme} flashMap={flashMap} favs={favs} onThemeClick={onThemeClick} onStockSelect={onStockSelect}/>)}
+        {matchedThemes.map(theme=><ThemeCard key={theme.id} theme={theme} flashMap={flashMap} favs={favs} onThemeClick={onThemeClick} onStockSelect={onStockSelect}/>)}
       </div>
     </div>
   );
