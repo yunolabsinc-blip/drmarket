@@ -526,9 +526,9 @@ const LS = {
 // Railway 배포 후 아래 URL을 실제 서버 주소로 교체하세요.
 // 예) const API_BASE = 'https://drmarket-api.up.railway.app'
 const API_BASE = (
-  window.DRMARKET_API_URL ||           // 1순위: 전역 변수 설정
-  localStorage.getItem('drmarket_api') || // 2순위: localStorage 설정
-  ''                                    // 3순위: 비워두면 시뮬레이션 모드
+  window.DRMARKET_API_URL ||
+  localStorage.getItem('drmarket_api') ||
+  'https://drmarket-production.up.railway.app'
 );
 const WS_BASE  = API_BASE ? API_BASE.replace(/^http/, 'ws') : '';
 
