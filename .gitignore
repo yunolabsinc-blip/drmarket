@@ -1,0 +1,36 @@
+# 환경변수 (실제 API 키) - 절대 커밋 금지
+.env
+backend/.env
+*.env
+!*.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Node.js
+node_modules/
+.npm
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 빌드 결과물
+dist/
