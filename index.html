@@ -595,13 +595,38 @@ function useRealtimeData() {
       const idxData = await apiFetch('/api/market/indices', null);
       if (idxData?.indices) setIndices(idxData.indices);
 
-      const rankAmount = await apiFetch('/api/ranking/amount', null);
-      if (rankAmount?.ranking) {
-        setRanking(prev => ({
-          ...prev,
-          volume_amount: rankAmount.ranking.map((r,i)=>({...r,rank:i+1})),
-        }));
-      }
+      // API 필드명 → 프론트엔드 필드명 변환
+      const toFront = (r, i) => ({
+        rank: i + 1,
+        code: r.code,
+        name: r.name,
+        market: r.market || 'KOSPI',
+        price: r.price || 0,
+        change: r.change_rate !== undefined ? r.change_rate : (r.change || 0),
+        amount: r.trading_value || r.amount || 0,
+        tradeVol: r.volume || r.tradeVol || 0,
+        views: r.views || 0,
+      });
+
+      const [ra, rc, rv, rviews] = await Promise.all([
+        apiFetch('/api/ranking/amount', null),
+        apiFetch('/api/ranking/change', null),
+        apiFetch('/api/ranking/volume', null),
+        apiFetch('/api/ranking/views', null),
+      ]);
+
+      setRanking({
+        volume_amount: ra?.ranking     ? ra.ranking.map(toFront)     : RANKING_BASE.volume_amount,
+        change_rate:   rc?.ranking     ? rc.ranking.map(toFront)     : RANKING_BASE.change_rate,
+        trade_volume:  rv?.ranking     ? rv.ranking.map(toFront)     : RANKING_BASE.trade_volume,
+        views:         rviews?.ranking ? rviews.ranking.map(toFront) : RANKING_BASE.views,
+      });
+
+      // 30초마다 지수 갱신
+      setInterval(async () => {
+        const d = await apiFetch('/api/market/indices', null);
+        if (d?.indices) setIndices(d.indices);
+      }, 30000);
     })();
 
     // WebSocket 실시간 연결
@@ -897,8 +922,18 @@ function StockDetail({stock, favs, onClose, onToggleFav}) {
   const tabs=['오늘 테마','관련 뉴스','상한가','메모'];
   const isUp=stock.change>=0;
   const isFav=favs.has(stock.code);
-  const news=STOCK_NEWS[stock.code]||DEFAULT_NEWS;
+  const [news, setNews] = useState(STOCK_NEWS[stock.code]||DEFAULT_NEWS);
+  const [newsLoading, setNewsLoading] = useState(false);
   const limitUps=LIMIT_UP_HISTORY[stock.code]||[];
+
+  useEffect(()=>{
+    if(!API_BASE) return;
+    setNewsLoading(true);
+    const rawCode = stock.code.replace(/^A/,'');
+    apiFetch(`/api/stock/${rawCode}/news?name=${encodeURIComponent(stock.name)}&count=8`, null)
+      .then(d => { if(d?.news && d.news.length>0) setNews(d.news); })
+      .finally(() => setNewsLoading(false));
+  },[stock.code]);
   const relatedThemes=THEMES_BASE.filter(t=>t.stocks.some(s=>s.code===stock.code)).map(t=>t.name);
 
   const [memo, setMemo] = useState(()=>LS.getMemos()[stock.code]||'');
@@ -941,15 +976,25 @@ function StockDetail({stock, favs, onClose, onToggleFav}) {
               <p className="theme-summary">{stock.themeName} 테마는 오늘 시장에서 높은 거래대금과 함께 강한 상승세를 보이고 있습니다. 외국인·기관의 매수세가 유입되며 {stock.name}을(를) 포함한 핵심 종목들이 주목받고 있습니다.</p>
             </div>
           )}
-          {tab===1&&news.map((item,i)=>(
-            <div key={i} className="news-item">
-              <div className="news-meta">
-                <span className="news-tag">[{item.tag}]</span>
-                <span className="news-time">{item.time}</span>
-              </div>
-              <div className="news-title">{item.title}</div>
-            </div>
-          ))}
+          {tab===1&&(
+            newsLoading
+              ? <div className="no-data">뉴스 로딩 중...</div>
+              : news.map((item,i)=>{
+                  const url = item.source || item.link || '';
+                  return (
+                    <div key={i} className="news-item"
+                      onClick={()=>url && window.open(url,'_blank','noopener')}
+                      style={{cursor: url ? 'pointer' : 'default'}}>
+                      <div className="news-meta">
+                        <span className="news-tag">[{item.tag}]</span>
+                        <span className="news-time">{item.time}</span>
+                        {url && <span style={{fontSize:10,color:'var(--primary)',marginLeft:'auto'}}>🔗 링크</span>}
+                      </div>
+                      <div className="news-title" style={{color: url ? 'var(--primary-dark)' : 'var(--text)'}}>{item.title}</div>
+                    </div>
+                  );
+                })
+          )}
           {tab===2&&(
             <div>
               <div className="limitup-count">최근 2년 상한가 <strong>{limitUps.length}회</strong></div>
