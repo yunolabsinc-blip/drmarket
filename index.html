@@ -551,6 +551,7 @@ function useRealtimeData() {
   const [ranking, setRanking] = useState(() => JSON.parse(JSON.stringify(RANKING_BASE)));
   const [apiStatus, setApiStatus] = useState(API_BASE ? 'connecting' : 'simulation');
   const [flashMap, setFlashMap] = useState({});
+  const [lastUpdated, setLastUpdated] = useState(null);
   const prev = useRef({});
   const wsRef = useRef(null);
   const apiLive = useRef(false);   // API 연결 여부 추적
@@ -592,6 +593,7 @@ function useRealtimeData() {
       })
     })));
     if (Object.keys(flash).length) { setFlashMap(flash); setTimeout(() => setFlashMap({}), 400); }
+    setLastUpdated(new Date());
   }, []);
 
   // 랭킹 전체 갱신
@@ -715,7 +717,7 @@ function useRealtimeData() {
     };
   }, [startSimulation, refreshIndices, refreshThemePrices, refreshRanking]);
 
-  return {themes, indices, ranking, flashMap, apiStatus};
+  return {themes, indices, ranking, flashMap, apiStatus, lastUpdated};
 }
 
 // ======================== COMPONENTS ========================
@@ -728,11 +730,12 @@ const STATUS_META = {
   simulation:   { dot: '#94a3b8', label: '시뮬레이션' },
 };
 
-function Header({searchQuery, setSearchQuery, apiStatus}) {
+function Header({searchQuery, setSearchQuery, apiStatus, lastUpdated}) {
   const now=new Date();
   const days=['일','월','화','수','목','금','토'];
   const t=`${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}(${days[now.getDay()]}) ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
   const sm = STATUS_META[apiStatus] || STATUS_META.simulation;
+  const upd = lastUpdated ? `${String(lastUpdated.getHours()).padStart(2,'0')}:${String(lastUpdated.getMinutes()).padStart(2,'0')}:${String(lastUpdated.getSeconds()).padStart(2,'0')} 업데이트` : '로딩 중...';
   return (
     <header className="header">
       <div className="header-top">
@@ -750,6 +753,12 @@ function Header({searchQuery, setSearchQuery, apiStatus}) {
           </div>
           <button className="icon-btn">≡</button>
         </div>
+      </div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:5,paddingLeft:2}}>
+        <span style={{fontSize:10,color:'rgba(255,255,255,.6)'}}>📡 실시간 데이터</span>
+        <span style={{fontSize:10,color: lastUpdated ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.5)',background:'rgba(0,0,0,.18)',padding:'1px 7px',borderRadius:8}}>
+          {upd}
+        </span>
       </div>
       <div className="search-bar">
         <input className="search-input" type="text" placeholder="종목, 테마명을 입력하세요." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/>
@@ -1252,7 +1261,7 @@ function App() {
   const [selectedTheme, setSelectedTheme] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [favs, setFavs] = useState(()=>LS.getFavs());
-  const {themes, indices, ranking, flashMap, apiStatus} = useRealtimeData();
+  const {themes, indices, ranking, flashMap, apiStatus, lastUpdated} = useRealtimeData();
 
   const handleStockSelect = (stock, themeName) => {
     setSelectedTheme(null);
@@ -1265,7 +1274,7 @@ function App() {
 
   return (
     <div className="app-container">
-      <Header searchQuery={searchQuery} setSearchQuery={setSearchQuery} apiStatus={apiStatus}/>
+      <Header searchQuery={searchQuery} setSearchQuery={setSearchQuery} apiStatus={apiStatus} lastUpdated={lastUpdated}/>
       <div className="content-area">
         {activeTab==='market'&&<>
           <MarketIndices indices={indices}/>
