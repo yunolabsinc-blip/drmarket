@@ -35,9 +35,9 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 /* ── HEADER ── */
 .header { background: linear-gradient(135deg, #D97757 0%, #C4622D 100%); padding: 8px 12px 6px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 12px rgba(196,98,45,.3); }
 .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.header-logo { display: flex; align-items: center; gap: 6px; }
+.header-logo { display: flex; align-items: center; gap: 6px; flex-shrink: 0; min-width: 0; }
 .logo-mark { width:28px;height:28px;background:rgba(255,255,255,.22);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:#fff; }
-.logo-text { font-size: 19px; font-weight: 900; color: #fff; letter-spacing: -0.5px; }
+.logo-text { font-size: 19px; font-weight: 900; color: #fff; letter-spacing: -0.5px; white-space: nowrap; flex-shrink: 0; }
 .logo-badge { background: rgba(255,255,255,.22); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; }
 .header-time { color: rgba(255,255,255,.8); font-size: 11px; }
 .header-icons { display: flex; gap: 8px; }
@@ -356,15 +356,15 @@ const THEMES_BASE = [
     stocks:[
       {code:'A047810',name:'한국항공우주',price:61400,change:12.55,volume:187000000000},
       {code:'A278990',name:'EMC홀딩스',price:14200,change:10.30,volume:39000000000},
-      {code:'A007570',name:'일양약품',price:34500,change:7.20,volume:28000000000},
-      {code:'A079550',name:'LIG넥스원',price:193500,change:4.85,volume:66000000000},
+      {code:'A012450',name:'한화에어로스페이스',price:382000,change:7.20,volume:28000000000},
+      {code:'A272210',name:'LIG넥스원',price:193500,change:4.85,volume:66000000000},
     ]},
   { id:13, name:'데이터센터', score:10.88, star:false, headline:'AI 데이터센터 전력 수요 급증…',
     stocks:[
       {code:'A071840',name:'LS전선',price:84000,change:11.40,volume:92000000000},
       {code:'A001440',name:'대한전선',price:5820,change:9.80,volume:48000000000},
       {code:'A298040',name:'효성중공업',price:312000,change:7.50,volume:74000000000},
-      {code:'A003600',name:'SK',price:178000,change:3.20,volume:58000000000},
+      {code:'A034730',name:'SK',price:301000,change:3.20,volume:58000000000},
     ]},
   { id:14, name:'게임', score:7.54, star:false, headline:'신작 출시·글로벌 흥행 기대…',
     stocks:[
@@ -382,14 +382,14 @@ const THEMES_BASE = [
     ]},
   { id:16, name:'수소에너지', score:6.44, star:false, headline:'수소차·연료전지 정책 수혜…',
     stocks:[
-      {code:'A006490',name:'SK케미칼',price:48500,change:8.10,volume:42000000000},
-      {code:'A285130',name:'SK케이파워',price:3840,change:6.90,volume:18000000000},
+      {code:'A096770',name:'SK이노베이션',price:115000,change:8.10,volume:42000000000},
+      {code:'A285130',name:'SK케미칼',price:52600,change:6.90,volume:18000000000},
       {code:'A336260',name:'두산퓨얼셀',price:15200,change:5.50,volume:34000000000},
-      {code:'A285470',name:'하이스틸',price:21300,change:4.20,volume:24000000000},
+      {code:'A005490',name:'POSCO홀딩스',price:332500,change:4.20,volume:24000000000},
     ]},
   { id:17, name:'의료기기', score:7.10, star:false, headline:'FDA 허가·수출 확대 기대감…',
     stocks:[
-      {code:'A091990',name:'셀트리온헬스케어',price:62100,change:7.40,volume:88000000000},
+      {code:'A214150',name:'클래시스',price:62100,change:7.40,volume:88000000000},
       {code:'A078340',name:'컴퍼니케이',price:12450,change:6.10,volume:32000000000},
       {code:'A206640',name:'바디텍메드',price:19800,change:5.20,volume:27000000000},
       {code:'A196170',name:'알테오젠',price:342000,change:4.80,volume:48000000000},
@@ -410,11 +410,94 @@ const THEMES_BASE = [
     ]},
   { id:20, name:'전기차충전', score:9.60, star:false, headline:'전기차 보급 가속·충전 인프라…',
     stocks:[
-      {code:'A011090',name:'LG이노텍',price:142000,change:10.20,volume:74000000000},
+      {code:'A011070',name:'LG이노텍',price:293500,change:10.20,volume:74000000000},
       {code:'A019540',name:'일진머티리얼즈',price:28500,change:8.40,volume:42000000000},
       {code:'A003690',name:'코리아써키트',price:14800,change:7.30,volume:32000000000},
       {code:'A298050',name:'효성화학',price:68000,change:5.10,volume:28000000000},
     ]},
+];
+
+// ======================== STOCK LIST (검색용) ========================
+const STOCK_LIST = [
+  // KOSPI 대형주
+  {code:'A005930',name:'삼성전자',market:'KOSPI'},
+  {code:'A000660',name:'SK하이닉스',market:'KOSPI'},
+  {code:'A373220',name:'LG에너지솔루션',market:'KOSPI'},
+  {code:'A207940',name:'삼성바이오로직스',market:'KOSPI'},
+  {code:'A005380',name:'현대차',market:'KOSPI'},
+  {code:'A000270',name:'기아',market:'KOSPI'},
+  {code:'A068270',name:'셀트리온',market:'KOSPI'},
+  {code:'A005490',name:'POSCO홀딩스',market:'KOSPI'},
+  {code:'A012450',name:'한화에어로스페이스',market:'KOSPI'},
+  {code:'A035420',name:'NAVER',market:'KOSPI'},
+  {code:'A035720',name:'카카오',market:'KOSPI'},
+  {code:'A051910',name:'LG화학',market:'KOSPI'},
+  {code:'A006400',name:'삼성SDI',market:'KOSPI'},
+  {code:'A096770',name:'SK이노베이션',market:'KOSPI'},
+  {code:'A034730',name:'SK',market:'KOSPI'},
+  {code:'A003550',name:'LG',market:'KOSPI'},
+  {code:'A066570',name:'LG전자',market:'KOSPI'},
+  {code:'A011070',name:'LG이노텍',market:'KOSPI'},
+  {code:'A009540',name:'HD현대중공업',market:'KOSPI'},
+  {code:'A042660',name:'한화오션',market:'KOSPI'},
+  {code:'A097230',name:'HJ중공업',market:'KOSPI'},
+  {code:'A352820',name:'하이브',market:'KOSPI'},
+  {code:'A041510',name:'SM엔터테인먼트',market:'KOSPI'},
+  {code:'A035900',name:'JYP Ent.',market:'KOSPI'},
+  {code:'A122870',name:'YG엔터테인먼트',market:'KOSPI'},
+  {code:'A036570',name:'엔씨소프트',market:'KOSPI'},
+  {code:'A251270',name:'넷마블',market:'KOSPI'},
+  {code:'A323410',name:'카카오뱅크',market:'KOSPI'},
+  {code:'A377300',name:'카카오페이',market:'KOSPI'},
+  {code:'A030200',name:'KT',market:'KOSPI'},
+  {code:'A017670',name:'SK텔레콤',market:'KOSPI'},
+  {code:'A032640',name:'LG유플러스',market:'KOSPI'},
+  {code:'A086790',name:'하나금융지주',market:'KOSPI'},
+  {code:'A055550',name:'신한지주',market:'KOSPI'},
+  {code:'A105560',name:'KB금융',market:'KOSPI'},
+  {code:'A000810',name:'삼성화재',market:'KOSPI'},
+  {code:'A005830',name:'DB손해보험',market:'KOSPI'},
+  {code:'A000720',name:'현대건설',market:'KOSPI'},
+  {code:'A028050',name:'삼성물산',market:'KOSPI'},
+  {code:'A064350',name:'현대로템',market:'KOSPI'},
+  {code:'A272210',name:'LIG넥스원',market:'KOSPI'},
+  {code:'A047810',name:'한국항공우주',market:'KOSPI'},
+  {code:'A285130',name:'SK케미칼',market:'KOSPI'},
+  {code:'A336260',name:'두산퓨얼셀',market:'KOSPI'},
+  {code:'A071840',name:'LS전선',market:'KOSPI'},
+  {code:'A298040',name:'효성중공업',market:'KOSPI'},
+  {code:'A001440',name:'대한전선',market:'KOSPI'},
+  {code:'A009150',name:'삼성전기',market:'KOSPI'},
+  {code:'A003490',name:'대한항공',market:'KOSPI'},
+  {code:'A004020',name:'현대제철',market:'KOSPI'},
+  {code:'A010950',name:'S-Oil',market:'KOSPI'},
+  {code:'A000100',name:'유한양행',market:'KOSPI'},
+  {code:'A128940',name:'한미약품',market:'KOSPI'},
+  {code:'A326030',name:'SK바이오팜',market:'KOSPI'},
+  {code:'A011790',name:'SKC',market:'KOSPI'},
+  {code:'A001740',name:'SK네트웍스',market:'KOSPI'},
+  {code:'A006360',name:'GS건설',market:'KOSPI'},
+  {code:'A047040',name:'대우건설',market:'KOSPI'},
+  {code:'A000210',name:'DL이앤씨',market:'KOSPI'},
+  {code:'A298050',name:'효성화학',market:'KOSPI'},
+  {code:'A009290',name:'HSD엔진',market:'KOSPI'},
+  // KOSDAQ
+  {code:'A028300',name:'HLB',market:'KOSDAQ'},
+  {code:'A145020',name:'휴젤',market:'KOSDAQ'},
+  {code:'A196170',name:'알테오젠',market:'KOSDAQ'},
+  {code:'A950130',name:'실리콘투',market:'KOSDAQ'},
+  {code:'A078520',name:'에이피알',market:'KOSDAQ'},
+  {code:'A263720',name:'달바글로벌',market:'KOSDAQ'},
+  {code:'A036800',name:'사피엔반도체',market:'KOSDAQ'},
+  {code:'A058990',name:'키네마스터',market:'KOSDAQ'},
+  {code:'A950200',name:'와이랩',market:'KOSDAQ'},
+  {code:'A302430',name:'이노뎁',market:'KOSDAQ'},
+  {code:'A214150',name:'클래시스',market:'KOSDAQ'},
+  {code:'A206640',name:'바디텍메드',market:'KOSDAQ'},
+  {code:'A033560',name:'인텍플러스',market:'KOSDAQ'},
+  {code:'A215090',name:'에이트원',market:'KOSDAQ'},
+  {code:'A095500',name:'미스터블루',market:'KOSDAQ'},
+  {code:'A058420',name:'키다리스튜디오',market:'KOSDAQ'},
 ];
 
 // ======================== STOCK DATA ========================
@@ -934,13 +1017,20 @@ function ThemeGrid({themes, flashMap, favs, searchQuery, onThemeClick, onStockSe
     return list;
   }, [themes]);
 
-  const matchedStocks = isSearching
-    ? allStocks.filter(s => s.name.includes(q) || s.code.includes(q))
+  const matchQ = q.toLowerCase();
+  const matchedStocksFromThemes = isSearching
+    ? allStocks.filter(s => s.name.toLowerCase().includes(matchQ) || s.code.toLowerCase().includes(matchQ))
     : [];
+  const themeStockCodes = new Set(allStocks.map(s => s.code));
+  const matchedStocksFromList = isSearching
+    ? STOCK_LIST.filter(s => !themeStockCodes.has(s.code) && (s.name.toLowerCase().includes(matchQ) || s.code.toLowerCase().includes(matchQ)))
+        .map(s => ({...s, price: 0, change: 0, volume: 0, themeName: '종목'}))
+    : [];
+  const matchedStocks = [...matchedStocksFromThemes, ...matchedStocksFromList];
 
   const sorted = [...themes].sort((a, b) => b.score - a.score);
   const matchedThemes = isSearching
-    ? sorted.filter(t => t.name.includes(q) || t.stocks.some(s => s.name.includes(q)))
+    ? sorted.filter(t => t.name.toLowerCase().includes(matchQ) || t.stocks.some(s => s.name.toLowerCase().includes(matchQ)))
     : sorted.slice(0, 6);
 
   if (isSearching) {
@@ -970,8 +1060,8 @@ function ThemeGrid({themes, flashMap, favs, searchQuery, onThemeClick, onStockSe
                       <div style={{fontSize:10,color:'var(--sub)',marginTop:1}}>{s.code}</div>
                     </div>
                     <div style={{marginLeft:'auto',textAlign:'right'}}>
-                      <div style={{fontSize:14,fontWeight:700}} className={isUp?'up':'down'}>{fmt.price(s.price)}</div>
-                      <div style={{fontSize:11,fontWeight:600}} className={isUp?'up':'down'}>{fmt.change(s.change)}</div>
+                      <div style={{fontSize:14,fontWeight:700}} className={isUp?'up':'down'}>{s.price ? fmt.price(s.price) : <span style={{color:'var(--sub)',fontSize:11}}>클릭 시 조회</span>}</div>
+                      <div style={{fontSize:11,fontWeight:600}} className={isUp?'up':'down'}>{s.price ? fmt.change(s.change) : ''}</div>
                     </div>
                   </div>
                 );
@@ -1021,11 +1111,24 @@ function ThemeGrid({themes, flashMap, favs, searchQuery, onThemeClick, onStockSe
 function StockDetail({stock, favs, onClose, onToggleFav}) {
   const [tab, setTab] = useState(0);
   const tabs=['오늘 테마','관련 뉴스','상한가','메모'];
-  const isUp=stock.change>=0;
   const isFav=favs.has(stock.code);
   const [news, setNews] = useState(STOCK_NEWS[stock.code]||DEFAULT_NEWS);
   const [newsLoading, setNewsLoading] = useState(false);
   const limitUps=LIMIT_UP_HISTORY[stock.code]||[];
+
+  // 실시간 현재가 조회
+  const [livePrice, setLivePrice] = useState(null);
+  const [liveChange, setLiveChange] = useState(null);
+  useEffect(() => {
+    if (!API_BASE) return;
+    const rawCode = stock.code.replace(/^A/, '');
+    apiFetch(`/api/stock/${rawCode}/price`, null).then(d => {
+      if (d && d.price) { setLivePrice(d.price); setLiveChange(d.change_rate ?? null); }
+    });
+  }, [stock.code]);
+  const displayPrice = livePrice ?? stock.price;
+  const displayChange = liveChange ?? stock.change;
+  const isUp = displayChange >= 0;
 
   useEffect(()=>{
     if(!API_BASE) return;
@@ -1055,8 +1158,8 @@ function StockDetail({stock, favs, onClose, onToggleFav}) {
             <div className="modal-stock-code">{stock.code}</div>
           </div>
           <div className="modal-price-info">
-            <div className={`modal-price ${isUp?'up':'down'}`}>{fmt.price(stock.price)}</div>
-            <div className={`modal-change ${isUp?'up':'down'}`}>{fmt.change(stock.change)}</div>
+            <div className={`modal-price ${isUp?'up':'down'}`}>{displayPrice ? fmt.price(displayPrice) : '조회 중...'}</div>
+            <div className={`modal-change ${isUp?'up':'down'}`}>{displayPrice ? fmt.change(displayChange) : ''}</div>
           </div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
