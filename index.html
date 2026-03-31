@@ -853,15 +853,37 @@ function ThemeCard({theme, flashMap, favs, onThemeClick, onStockSelect}) {
 }
 
 function ThemeGrid({themes, flashMap, favs, searchQuery, onThemeClick, onStockSelect}) {
-  const filtered = searchQuery.trim()
-    ? themes.filter(t=>t.name.includes(searchQuery)||t.stocks.some(s=>s.name.includes(searchQuery)))
-    : themes;
+  const isSearching = searchQuery.trim().length > 0;
+
+  // 상승률 순 정렬
+  const sorted = [...themes].sort((a, b) => b.score - a.score);
+
+  // 검색 중이면 전체, 아니면 상위 6개
+  const filtered = isSearching
+    ? sorted.filter(t => t.name.includes(searchQuery) || t.stocks.some(s => s.name.includes(searchQuery)))
+    : sorted.slice(0, 6);
+
   return (
     <div className="theme-section">
       <div className="section-title-bar">
         <span className="section-title">실시간 테마</span>
-        <span className="section-subtitle">거래대금 순</span>
+        <span className="section-subtitle">상승률 순</span>
+        {!isSearching && (
+          <span style={{marginLeft:'auto',fontSize:'11px',color:'var(--sub)'}}>
+            상위 6개 · 검색으로 더보기
+          </span>
+        )}
+        {isSearching && (
+          <span style={{marginLeft:'auto',fontSize:'11px',color:'var(--primary)'}}>
+            검색결과 {filtered.length}개
+          </span>
+        )}
       </div>
+      {filtered.length === 0 && isSearching && (
+        <div style={{textAlign:'center',padding:'40px 0',color:'var(--sub)',fontSize:'13px'}}>
+          검색 결과가 없습니다
+        </div>
+      )}
       <div className="theme-grid">
         {filtered.map(theme=><ThemeCard key={theme.id} theme={theme} flashMap={flashMap} favs={favs} onThemeClick={onThemeClick} onStockSelect={onStockSelect}/>)}
       </div>
