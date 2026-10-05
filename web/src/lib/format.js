@@ -44,14 +44,17 @@ export const fmtVolume = (n) => {
 
 export const tone = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : 'flat')
 
-// 한국 장 운영 상태 (공휴일은 반영하지 않음)
+// 통합 시세(KRX+넥스트레이드) 기준 장 운영 상태 (공휴일은 반영하지 않음)
+//  08:00~08:50 프리마켓(NXT) · 09:00~15:30 정규장(KRX) · 15:30~20:00 애프터마켓(NXT)
 export function marketPhase(now = new Date()) {
   const kst = new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60000)
   const day = kst.getDay()
   const m = kst.getHours() * 60 + kst.getMinutes()
   if (day === 0 || day === 6) return { key: 'closed', label: '휴장' }
-  if (m >= 510 && m < 540) return { key: 'pre', label: '장 시작 전' }
-  if (m >= 540 && m <= 930) return { key: 'open', label: '장 운영 중' }
+  if (m >= 480 && m < 530) return { key: 'open', label: '프리마켓' }
+  if (m >= 530 && m < 540) return { key: 'pre', label: '정규장 대기' }
+  if (m >= 540 && m <= 930) return { key: 'open', label: '정규장' }
+  if (m > 930 && m < 1200) return { key: 'open', label: '애프터마켓' }
   return { key: 'closed', label: '장 마감' }
 }
 

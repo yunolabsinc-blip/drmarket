@@ -169,6 +169,7 @@ async def health():
         "status": "ok",
         "mode": kis.KIS_MODE,
         "api_configured": kis._is_configured(),
+        "market": kis.KIS_MARKET,   # UN=KRX+NXT 통합
         "realtime_ws": not os.getenv("VERCEL"),
         "ws_clients": len(manager.active),
         "time": datetime.now().isoformat(),

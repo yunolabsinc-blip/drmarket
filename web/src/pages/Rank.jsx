@@ -56,6 +56,7 @@ export default function Rank() {
   return (
     <main className="page">
       <h1 className="page-title">순위</h1>
+      <p className="page-desc">KRX 정규장 체결 기준입니다. 넥스트레이드 거래는 포함되지 않습니다.</p>
       <StatusLine />
       <div className="segmented" role="tablist">
         {TYPES.map((t) => (

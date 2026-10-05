@@ -8,7 +8,7 @@ import OrderBook from '../components/OrderBook'
 import { Disclaimer, Empty, Rate, StarIcon, SubBar } from '../components/ui'
 
 const PERIODS = [
-  { id: '1m', label: '1일', type: 'line' },
+  { id: '1m', label: '당일', type: 'line' },
   { id: 'D', label: '3개월', type: 'candle' },
   { id: 'W', label: '1년', type: 'candle' },
   { id: 'M', label: '전체', type: 'line' },

@@ -145,7 +145,7 @@ export function Disclaimer() {
         닥터마켓의 시세·테마 정보는 투자 판단을 돕기 위한 참고 자료이며 특정 종목의 매수·매도를 권유하지 않습니다.
         시세는 지연되거나 오류가 있을 수 있고, 투자에 대한 판단과 결과의 책임은 이용자 본인에게 있습니다.
       </p>
-      <p>시세 출처: 한국투자증권 Open API · 테마 분류: 닥터마켓 자체 분류</p>
+      <p>시세 출처: 한국투자증권 Open API · KRX·넥스트레이드(NXT) 통합 시세 (순위는 KRX 체결 기준) · 테마 분류: 닥터마켓 자체 분류</p>
       <p className="copyright">© {new Date().getFullYear()} 유노랩스</p>
     </footer>
   )

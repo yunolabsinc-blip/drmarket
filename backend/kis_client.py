@@ -44,6 +44,12 @@ _cfg = {
     },
 }
 
+# 시세 범위: UN=KRX+넥스트레이드 통합, J=KRX만, NX=넥스트레이드만
+# (순위 API는 통합을 지원하지 않아 항상 KRX 기준)
+KIS_MARKET = os.getenv("KIS_MARKET", "UN").upper()
+if KIS_MARKET not in ("UN", "J", "NX"):
+    KIS_MARKET = "UN"
+
 CFG = _cfg[KIS_MODE]
 BASE_URL = CFG["base_url"]
 APP_KEY  = CFG["app_key"]
@@ -375,7 +381,7 @@ async def fetch_stock_price(code: str) -> dict:
 
     data = await _get(
         "/uapi/domestic-stock/v1/quotations/inquire-price",
-        {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+        {"FID_COND_MRKT_DIV_CODE": KIS_MARKET, "FID_INPUT_ISCD": code},
         "FHKST01010100",
     )
     if data and data.get("output"):
@@ -417,7 +423,7 @@ async def fetch_batch_prices(codes: list[str]) -> list[dict]:
                 continue
             params = {}
             for n, c in enumerate(chunk, 1):
-                params[f"FID_COND_MRKT_DIV_CODE_{n}"] = "J"
+                params[f"FID_COND_MRKT_DIV_CODE_{n}"] = KIS_MARKET
                 params[f"FID_INPUT_ISCD_{n}"] = c
             data = await _get("/uapi/domestic-stock/v1/quotations/intstock-multprice", params, "FHKST11300006")
             for o in (data or {}).get("output", []) or []:
@@ -763,7 +769,7 @@ async def fetch_stock_detail(code: str) -> dict | None:
         return cached
     data = await _get(
         "/uapi/domestic-stock/v1/quotations/inquire-price",
-        {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+        {"FID_COND_MRKT_DIV_CODE": KIS_MARKET, "FID_INPUT_ISCD": code},
         "FHKST01010100",
     )
     if not data or not data.get("output"):
@@ -807,7 +813,7 @@ async def fetch_daily_chart(code: str, period: str = "D", is_index: bool = False
     span = {"D": 160, "W": 800, "M": 3300}[period]
     start = end - timedelta(days=span)
     params = {
-        "FID_COND_MRKT_DIV_CODE": "U" if is_index else "J",
+        "FID_COND_MRKT_DIV_CODE": "U" if is_index else KIS_MARKET,
         "FID_INPUT_ISCD": code,
         "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
         "FID_INPUT_DATE_2": end.strftime("%Y%m%d"),
@@ -839,41 +845,52 @@ async def fetch_daily_chart(code: str, period: str = "D", is_index: bool = False
 
 
 async def fetch_minute_chart(code: str) -> list[dict]:
-    """당일 1분봉 (09:00~현재). KIS는 1회 30개씩이라 거꾸로 이어 붙인다."""
+    """당일 1분봉. KIS는 1회 30개씩이라 30분 간격 구간을 동시에 조회해 이어 붙인다."""
     key = f"minute:{code}"
     cached = _cache_get(key, 20)
     if cached:
         return cached
+    # 통합 시세는 넥스트레이드 프리마켓(08:00)부터 애프터마켓(20:00)까지
+    day_start, day_end = ("080000", "200000") if KIS_MARKET != "J" else ("090000", "153000")
     now = datetime.utcnow() + timedelta(hours=9)
-    hour = min(now.strftime("%H%M%S"), "153000")
-    if hour < "090000":
-        hour = "153000"   # 장 시작 전에는 직전 거래일 마감까지
+    hour = min(now.strftime("%H%M%S"), day_end)
+    if hour < day_start:
+        hour = day_end   # 장 시작 전에는 직전 거래일 마감까지
+
+    # 각 조회의 끝 시각: 현재 → 30분씩 거슬러 올라가며 장 시작까지
+    ends = []
+    t = datetime.strptime(hour, "%H%M%S")
+    start_t = datetime.strptime(day_start, "%H%M%S")
+    while t >= start_t:   # 장 시작 봉(08:00)까지 포함
+        ends.append(t.strftime("%H%M%S"))
+        t -= timedelta(minutes=30)
+
+    async def window(end_hour: str):
+        # 응답 지연으로 한 구간이 비면 차트에 구멍이 나므로 한 번 더 시도
+        for _ in range(2):
+            data = await _get(
+                "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
+                {"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": KIS_MARKET, "FID_INPUT_ISCD": code,
+                 "FID_INPUT_HOUR_1": end_hour, "FID_PW_DATA_INCU_YN": "N"},
+                "FHKST03010200",
+            )
+            out = [o for o in ((data or {}).get("output2", []) or []) if o.get("stck_cntg_hour")]
+            if out:
+                return out
+        return []
+
     seen: dict[str, dict] = {}
-    for _ in range(14):
-        data = await _get(
-            "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
-            {"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code,
-             "FID_INPUT_HOUR_1": hour, "FID_PW_DATA_INCU_YN": "N"},
-            "FHKST03010200",
-        )
-        out = (data or {}).get("output2", []) or []
-        out = [o for o in out if o.get("stck_cntg_hour")]
-        if not out:
-            break
+    for out in await asyncio.gather(*[window(e) for e in ends]):
         for o in out:
             h = o["stck_cntg_hour"]
+            if h < day_start:
+                continue
             seen[h] = {
                 "t": f"{h[:2]}:{h[2:4]}",
                 "o": _num(o.get("stck_oprc")), "h": _num(o.get("stck_hgpr")),
                 "l": _num(o.get("stck_lwpr")), "c": _num(o.get("stck_prpr")),
                 "v": _num(o.get("cntg_vol"), int),
             }
-        earliest = min(o["stck_cntg_hour"] for o in out)
-        if earliest <= "090000":
-            break
-        # 가장 이른 봉 1분 전부터 다시 조회
-        t = datetime.strptime(earliest, "%H%M%S") - timedelta(minutes=1)
-        hour = t.strftime("%H%M%S")
     rows = [seen[k] for k in sorted(seen)]
     if rows:
         _cache_set(key, rows)
@@ -887,7 +904,7 @@ async def fetch_orderbook(code: str) -> dict | None:
         return cached
     data = await _get(
         "/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
-        {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+        {"FID_COND_MRKT_DIV_CODE": KIS_MARKET, "FID_INPUT_ISCD": code},
         "FHKST01010200",
     )
     o = (data or {}).get("output1")

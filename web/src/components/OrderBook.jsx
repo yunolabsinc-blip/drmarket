@@ -48,12 +48,12 @@ export default function OrderBook({ code, prevClose }) {
 
   return (
     <div className="orderbook">
-      <div className="ob-head"><span>매도 잔량</span><span>호가</span><span>매수 잔량</span></div>
+      <div className="ob-head"><span>매도 잔량</span><span>통합 호가</span><span>매수 잔량</span></div>
       {asks.map((a) => <Row key={`a${a.price}`} side="ask" level={a} />)}
       {book.bids.map((b) => <Row key={`b${b.price}`} side="bid" level={b} />)}
       <div className="ob-foot">
         <span className="down">{book.total_ask.toLocaleString()}</span>
-        <span className="muted">총 잔량{time ? ` · ${time}` : ''}</span>
+        <span className="muted">KRX+NXT 합산{time ? ` · ${time}` : ''}</span>
         <span className="up">{book.total_bid.toLocaleString()}</span>
       </div>
     </div>
