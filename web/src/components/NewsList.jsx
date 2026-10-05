@@ -19,14 +19,30 @@ export function timeAgo(iso) {
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
+// 뉴스 한 건: 누르면 요약이 펼쳐지고, "기사 원문 보기"로 언론사 페이지로 이동
+export function NewsRow({ item, open, onToggle }) {
+  return (
+    <div className={`news-item ${open ? 'open' : ''}`}>
+      <button className="news-row" onClick={onToggle} aria-expanded={open}>
+        <b>{item.title}</b>
+        <span>{item.source}{item.source && item.time ? ' · ' : ''}{timeAgo(item.time)}</span>
+      </button>
+      {open && (
+        <div className="news-body">
+          <p>{item.desc || '이 기사는 요약이 제공되지 않습니다. 원문에서 확인해 주세요.'}</p>
+          <a className="btn sm" href={item.link} target="_blank" rel="noopener noreferrer">기사 원문 보기 ↗</a>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function NewsItems({ items }) {
+  const [open, setOpen] = useState(null)
   return (
     <div className="card list">
       {items.map((n, i) => (
-        <a key={i} className="news-row" href={n.link} target="_blank" rel="noopener noreferrer">
-          <b>{n.title}</b>
-          <span>{n.source}{n.source && n.time ? ' · ' : ''}{timeAgo(n.time)}</span>
-        </a>
+        <NewsRow key={n.link || i} item={n} open={open === i} onToggle={() => setOpen(open === i ? null : i)} />
       ))}
     </div>
   )
@@ -68,9 +84,9 @@ export default function MarketNews() {
         ))}
       </div>
       {items === null ? <Skeleton rows={8} /> : !items.length ? (
-        <div className="card muted-box">{failed ? '뉴스를 불러오지 못했습니다' : '최근 1일 뉴스가 없습니다'}</div>
+        <div className="card muted-box">{failed ? '뉴스를 불러오지 못했습니다' : '뉴스가 없습니다'}</div>
       ) : <NewsItems items={items} />}
-      <p className="page-desc" style={{ marginTop: 10 }}>최근 1일 기사 · 제목을 누르면 해당 언론사 페이지로 이동합니다.</p>
+      <p className="page-desc" style={{ marginTop: 10 }}>출처: 연합뉴스·파이낸셜뉴스·조선비즈 공개 RSS. 제목을 누르면 요약이, "기사 원문 보기"를 누르면 해당 언론사 페이지가 열립니다.</p>
     </>
   )
 }

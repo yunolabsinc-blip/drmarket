@@ -1,7 +1,8 @@
 """
 뉴스 조회
-- NAVER_CLIENT_ID/SECRET 이 설정되면 네이버 뉴스 검색 API (정식 경로)
-- 없으면 구글 뉴스 RSS (키 불필요). 제목·매체·시각·링크만 사용하고 본문은 가져오지 않는다.
+- 통합 뉴스: 언론사 공개 RSS(연합뉴스·파이낸셜뉴스·조선비즈 증권/경제 섹션). 제목·요약·매체·시각·원문 링크.
+- 종목 뉴스: NAVER_CLIENT_ID/SECRET 이 있으면 네이버 뉴스 검색(요약 포함), 없으면 위 피드에서 종목명 검색 + 구글 뉴스 RSS 보충.
+본문은 가져오지 않고 피드가 제공하는 요약만 사용한다.
 """
 
 import asyncio
@@ -18,56 +19,105 @@ import httpx
 
 logger = logging.getLogger(__name__)
 KST = timezone(timedelta(hours=9))
+UA = {"User-Agent": "Mozilla/5.0 (compatible; drmarket/1.0)"}
 
 _cache: dict[str, tuple[float, list]] = {}
-_CACHE_SEC = 300
 
-# 통합 뉴스 기본 검색어 (주제별)
-MARKET_TOPICS = {
-    "market": "증시 OR 코스피 OR 코스닥",
-    "feature": "특징주",
-    "global": "뉴욕증시 OR 나스닥 OR 연준",
-    "economy": "금리 OR 환율 OR 경제",
+# 언론사 RSS (공개 피드). (매체명, 주소)
+FEEDS = {
+    "market": [   # 증시 전용 섹션
+        ("연합뉴스", "https://www.yna.co.kr/rss/market.xml"),
+        ("파이낸셜뉴스", "https://www.fnnews.com/rss/r20/fn_realnews_stock.xml"),
+    ],
+    "biz": [      # 금융 전반 (특징주·해외·종목 검색 보충용)
+        ("조선비즈", "https://biz.chosun.com/arc/outboundfeeds/rss/category/stock/?outputType=xml"),
+    ],
+    "economy": [
+        ("연합뉴스", "https://www.yna.co.kr/rss/economy.xml"),
+    ],
 }
+GLOBAL_RE = re.compile(r"뉴욕|나스닥|월가|연준|다우|S&P|美\s?증시|미국\s?증시|엔비디아|테슬라|애플|FOMC|달러")
+FEATURE_RE = re.compile(r"특징주")
 
 
 def _strip_html(text: str) -> str:
-    text = re.sub(r"<[^>]+>", "", text or "")
-    return text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&#39;", "'").strip()
+    text = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", text or "", flags=re.S)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&#39;", "'").replace("&nbsp;", " ")
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _iso(dt: datetime | None) -> str:
     return dt.astimezone(KST).isoformat() if dt else ""
 
 
-async def _google_rss(query: str, when: str = "") -> list[dict]:
-    q = f"{query} when:{when}" if when else query
-    url = f"https://news.google.com/rss/search?q={quote(q)}&hl=ko&gl=KR&ceid=KR:ko"
+def _parse_date(s: str) -> datetime | None:
+    s = (s or "").strip()
+    if not s:
+        return None
     try:
-        async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "Mozilla/5.0 (drmarket)"}) as client:
+        return parsedate_to_datetime(s)
+    except Exception:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            dt = datetime.strptime(s[:25] if "T" in s else s[:19], fmt)
+            return dt if dt.tzinfo else dt.replace(tzinfo=KST)
+        except Exception:
+            continue
+    return None
+
+
+async def _fetch_xml(url: str) -> ET.Element | None:
+    try:
+        async with httpx.AsyncClient(timeout=8, headers=UA, follow_redirects=True) as client:
             resp = await client.get(url)
             resp.raise_for_status()
-            root = ET.fromstring(resp.text)
+            return ET.fromstring(resp.content)
     except Exception as e:
-        logger.warning("[NEWS] RSS 실패 %s: %s", query, e)
-        return []
+        logger.warning("[NEWS] 피드 실패 %s: %s", url, e)
+        return None
+
+
+async def _feed(source: str, url: str) -> list[dict]:
+    key = f"feed:{url}"
+    hit = _cache.get(key)
+    if hit and time.monotonic() - hit[0] < 180:
+        return hit[1]
+    root = await _fetch_xml(url)
     items = []
-    for it in root.findall("./channel/item"):
+    for it in (root.findall("./channel/item") if root is not None else []):
+        title = _strip_html(it.findtext("title") or "")
+        if not title:
+            continue
+        items.append({
+            "title": title,
+            "desc": _strip_html(it.findtext("description") or "")[:300],
+            "source": source,
+            "time": _iso(_parse_date(it.findtext("pubDate") or it.findtext("{http://purl.org/dc/elements/1.1/}date") or "")),
+            "link": (it.findtext("link") or "").strip(),
+        })
+    if items:
+        _cache[key] = (time.monotonic(), items)
+    return items
+
+
+async def _google_rss(query: str, when: str = "") -> list[dict]:
+    """구글 뉴스 RSS (요약 없음). 피드로 부족할 때 보충용"""
+    q = f"{query} when:{when}" if when else query
+    root = await _fetch_xml(f"https://news.google.com/rss/search?q={quote(q)}&hl=ko&gl=KR&ceid=KR:ko")
+    items = []
+    for it in (root.findall("./channel/item") if root is not None else []):
         title = it.findtext("title") or ""
         src = it.find("source")
         source = src.text.strip() if src is not None and src.text else ""
-        # 구글 RSS 제목은 "제목 - 매체명" 형식 (매체명 표기가 source와 다를 수 있어 짧은 꼬리는 그냥 뗀다)
         if source and title.endswith(f" - {source}"):
             title = title[: -len(source) - 3]
         else:
             title = re.sub(r"\s+-\s+[^-]{1,30}$", "", title)
-        # 언론사가 제목에 자기 이름을 한 번 더 붙인 경우 ("… - 조선비즈 - Chosunbiz"): 띄어쓰기 없는 짧은 꼬리만 제거
         title = re.sub(r"\s+-\s+\S{2,8}$", "", title)
-        try:
-            dt = parsedate_to_datetime(it.findtext("pubDate") or "")
-        except Exception:
-            dt = None
-        items.append({"title": _strip_html(title), "source": source, "time": _iso(dt), "link": it.findtext("link") or ""})
+        items.append({"title": _strip_html(title), "desc": "", "source": source,
+                      "time": _iso(_parse_date(it.findtext("pubDate"))), "link": it.findtext("link") or ""})
     return items
 
 
@@ -89,46 +139,58 @@ async def _naver(query: str, count: int) -> list[dict] | None:
         return None
     out = []
     for it in items:
-        try:
-            dt = parsedate_to_datetime(it.get("pubDate", ""))
-        except Exception:
-            dt = None
-        link = it.get("link") or it.get("originallink") or ""
         host = re.sub(r"^https?://(www\.)?", "", it.get("originallink", "")).split("/")[0]
-        out.append({"title": _strip_html(it.get("title")), "source": host, "time": _iso(dt), "link": link})
+        out.append({"title": _strip_html(it.get("title")), "desc": _strip_html(it.get("description"))[:300], "source": host,
+                    "time": _iso(_parse_date(it.get("pubDate", ""))), "link": it.get("link") or it.get("originallink") or ""})
     return out
 
 
-async def search(query: str, count: int = 20, when: str = "") -> list[dict]:
-    key = f"{query}|{count}|{when}"
-    hit = _cache.get(key)
-    if hit and time.monotonic() - hit[0] < _CACHE_SEC:
-        return hit[1]
-    items = await _naver(query, count)
-    if items is None:
-        items = await _google_rss(query, when)
-    items = items[:count]
-    _cache[key] = (time.monotonic(), items)
-    return items
+def _dedupe(items: list[dict]) -> list[dict]:
+    seen, out = set(), []
+    for it in sorted(items, key=lambda x: x["time"], reverse=True):
+        k = re.sub(r"\W+", "", it["title"])[:40]
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(it)
+    return out
+
+
+async def _feeds(group: str) -> list[dict]:
+    results = await asyncio.gather(*[_feed(src, url) for src, url in FEEDS[group]])
+    return [it for lst in results for it in lst]
 
 
 async def market_news(topic: str = "market", count: int = 30) -> list[dict]:
-    """통합 뉴스: 최근 1일, 주제별"""
-    query = MARKET_TOPICS.get(topic, MARKET_TOPICS["market"])
-    return await search(query, count, when="1d")
+    """통합 뉴스. market=증시, feature=특징주, global=해외, economy=경제"""
+    if topic == "economy":
+        items = await _feeds("economy")
+    elif topic == "feature":
+        both = await asyncio.gather(_feeds("market"), _feeds("biz"))
+        items = [it for lst in both for it in lst if FEATURE_RE.search(it["title"])]
+        if len(items) < 8:
+            items += await _google_rss("특징주", "1d")
+    elif topic == "global":
+        both = await asyncio.gather(_feeds("market"), _feeds("biz"), _feeds("economy"))
+        items = [it for lst in both for it in lst if GLOBAL_RE.search(it["title"])]
+        if len(items) < 8:
+            items += await _google_rss("뉴욕증시 OR 나스닥 OR 연준", "1d")
+    else:
+        items = await _feeds("market")
+    return _dedupe(items)[:count]
 
 
 async def stock_news(name: str, count: int = 10) -> list[dict]:
-    return await search(f"{name} 주가", count)
+    """종목 뉴스: 네이버(설정 시) → 언론사 피드에서 종목명 검색 + 구글 보충"""
+    items = await _naver(f"{name} 주가", count)
+    if items is not None:
+        return items[:count]
+    pools = await asyncio.gather(_feeds("market"), _feeds("biz"), _feeds("economy"), _google_rss(f"{name} 주가"))
+    key = name.replace(" ", "")
+    from_feeds = [it for lst in pools[:3] for it in lst if key in it["title"].replace(" ", "") or key in it["desc"].replace(" ", "")]
+    return _dedupe(from_feeds + pools[3])[:count]
 
 
 async def headlines(count: int = 5) -> list[dict]:
-    """홈 화면용: 증시·특징주 섞어서 최신순"""
-    a, b = await asyncio.gather(market_news("market", 10), market_news("feature", 10))
-    seen, out = set(), []
-    for it in sorted(a + b, key=lambda x: x["time"], reverse=True):
-        if it["title"] in seen:
-            continue
-        seen.add(it["title"])
-        out.append(it)
-    return out[:count]
+    """홈 화면·뉴스 띠용: 증시 최신"""
+    return (await market_news("market", 20))[:count]

@@ -6,7 +6,7 @@ import { go } from '../lib/router'
 import Chart from '../components/Chart'
 import OrderBook from '../components/OrderBook'
 import { Disclaimer, Empty, Rate, StarIcon, SubBar } from '../components/ui'
-import { timeAgo } from '../components/NewsList'
+import { NewsItems } from '../components/NewsList'
 
 // MTS 방식: 분봉(1·3·5·10·30·60) + 일·주·월·년봉
 const MINUTES = [1, 3, 5, 10, 30, 60]
@@ -214,14 +214,7 @@ export default function Stock({ code }) {
         {news.length > 0 && (
           <section className="section">
             <div className="section-head"><h2>관련 뉴스</h2></div>
-            <div className="card list">
-              {news.map((n, i) => (
-                <a key={i} className="news-row" href={n.link || n.source} target="_blank" rel="noopener noreferrer">
-                  <b>{n.title}</b>
-                  <span>{n.source}{n.source && n.time ? ' · ' : ''}{timeAgo(n.time)}</span>
-                </a>
-              ))}
-            </div>
+            <NewsItems items={news} />
           </section>
         )}
 
