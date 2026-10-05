@@ -80,6 +80,20 @@ async def _throttle():
 _resp_cache: dict[str, tuple[float, Any]] = {}
 # 최근 KIS 오류 (디버그용, /api/token/status 에 노출)
 last_errors: dict[str, str] = {}
+# 부하 감지: 최근 호출 한도 초과 시각, 최근 10초간 호가를 본 종목들
+_load = {"rate_limited_at": 0.0}
+_book_watch: dict[str, float] = {}
+
+
+def poll_hint() -> int:
+    """호가 갱신 간격(ms) 권장값. 한도 초과가 났거나 동시에 보는 종목이 많으면 늘린다."""
+    now = time.monotonic()
+    for c in [c for c, t in _book_watch.items() if now - t > 10]:
+        _book_watch.pop(c, None)
+    if now - _load["rate_limited_at"] < 30:
+        return 8000
+    n = len(_book_watch)
+    return 3000 if n <= 8 else 5000 if n <= 20 else 8000
 
 
 def _cache_get(key: str, ttl: float):
@@ -302,9 +316,11 @@ async def _get(path: str, params: dict, tr_id: str) -> dict | None:
         if data.get("rt_cd") == "0":
             return data
         # EGW00201 = 초당 거래건수 초과 → 잠깐 쉬고 한 번 더
-        if data.get("msg_cd") == "EGW00201" and attempt == 0:
-            await asyncio.sleep(1)
-            continue
+        if data.get("msg_cd") == "EGW00201":
+            _load["rate_limited_at"] = time.monotonic()
+            if attempt == 0:
+                await asyncio.sleep(1)
+                continue
         logger.warning("[KIS] API 오류 %s %s: %s", tr_id, data.get("msg_cd"), data.get("msg1"))
         last_errors[tr_id] = f"{data.get('msg_cd')} {data.get('msg1')}"
         return None
@@ -773,6 +789,9 @@ async def fetch_stock_detail(code: str) -> dict | None:
         "FHKST01010100",
     )
     if not data or not data.get("output"):
+        last = _resp_cache.get(f"detail_last:{code}")
+        if last and time.monotonic() - last[0] < 300:
+            return {**last[1], "stale": True}
         return None
     o = data["output"]
     result = {
@@ -799,6 +818,7 @@ async def fetch_stock_detail(code: str) -> dict | None:
         "sector": o.get("bstp_kor_isnm", ""),
     }
     _cache_set(f"detail:{code}", result)
+    _resp_cache[f"detail_last:{code}"] = (time.monotonic(), result)
     return result
 
 
@@ -942,8 +962,11 @@ async def fetch_minute_chart(code: str) -> list[dict]:
 
 
 async def fetch_orderbook(code: str) -> dict | None:
-    """10단계 매도·매수 호가와 잔량"""
-    cached = _cache_get(f"book:{code}", 2)
+    """10단계 매도·매수 호가와 잔량. 조회 실패(한도 초과 등) 시 마지막 값을 stale 표시로 돌려준다"""
+    _book_watch[code] = time.monotonic()
+    # 동시에 보는 종목이 많을수록 캐시를 길게 (같은 종목을 여러 명이 봐도 KIS 호출은 1번)
+    ttl = poll_hint() / 1000 - 0.5
+    cached = _cache_get(f"book:{code}", ttl)
     if cached:
         return cached
     data = await _get(
@@ -953,6 +976,9 @@ async def fetch_orderbook(code: str) -> dict | None:
     )
     o = (data or {}).get("output1")
     if not o:
+        last = _resp_cache.get(f"book_last:{code}")
+        if last and time.monotonic() - last[0] < 120:
+            return {**last[1], "stale": True}
         return None
     asks = [{"price": _num(o.get(f"askp{i}"), int), "qty": _num(o.get(f"askp_rsqn{i}"), int)} for i in range(1, 11)]
     bids = [{"price": _num(o.get(f"bidp{i}"), int), "qty": _num(o.get(f"bidp_rsqn{i}"), int)} for i in range(1, 11)]
@@ -968,6 +994,7 @@ async def fetch_orderbook(code: str) -> dict | None:
         "expected_price": _num(exp.get("antc_cnpr"), int),
     }
     _cache_set(f"book:{code}", result)
+    _resp_cache[f"book_last:{code}"] = (time.monotonic(), result)
     return result
 
 

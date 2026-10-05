@@ -3,6 +3,7 @@ import { getHeadlines, getMarketNews } from '../lib/api'
 import { useMarket } from '../lib/store'
 import { fmtRate, tone } from '../lib/format'
 import { go } from '../lib/router'
+import { track } from '../lib/analytics'
 import { Skeleton } from './ui'
 
 export const TOPICS = [
@@ -34,7 +35,7 @@ export function RelatedStocks({ text, onNavigate }) {
       {stocks.map((s) => {
         const p = prices[s.code]
         return (
-          <button key={s.code} className="chip stock-chip" onClick={(e) => { e.stopPropagation(); onNavigate?.(); go(`/stock/${s.code}`) }}>
+          <button key={s.code} className="chip stock-chip" onClick={(e) => { e.stopPropagation(); track('stock_chip'); onNavigate?.(); go(`/stock/${s.code}`) }}>
             {s.name}{p && <em className={tone(p.change_rate)}>{fmtRate(p.change_rate)}</em>}
           </button>
         )
@@ -47,7 +48,7 @@ export function RelatedStocks({ text, onNavigate }) {
 export function NewsRow({ item, open, onToggle }) {
   return (
     <div className={`news-item ${open ? 'open' : ''}`}>
-      <button className="news-row" onClick={onToggle} aria-expanded={open}>
+      <button className="news-row" onClick={() => { if (!open) track('news_open'); onToggle() }} aria-expanded={open}>
         <b>{item.kind === 'feature' && <span className="tag-feature">특징주</span>}{item.title}</b>
         <span>{item.source}{item.source && item.time ? ' · ' : ''}{timeAgo(item.time)}</span>
       </button>
@@ -55,7 +56,7 @@ export function NewsRow({ item, open, onToggle }) {
         <div className="news-body">
           <p>{item.desc || '이 기사는 요약이 제공되지 않습니다. 원문에서 확인해 주세요.'}</p>
           <RelatedStocks text={`${item.title} ${item.desc || ''}`} />
-          <a className="btn sm" href={item.link} target="_blank" rel="noopener noreferrer">기사 원문 보기 ↗</a>
+          <a className="btn sm" href={item.link} target="_blank" rel="noopener noreferrer" onClick={() => track('news_link')}>기사 원문 보기 ↗</a>
         </div>
       )}
     </div>

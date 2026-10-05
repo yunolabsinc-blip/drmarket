@@ -13,13 +13,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request, Header
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
 import kis_client as kis
 import market_events
 import news
+import stats
 
 # ──────────────────────────────────────────────
 # 로깅
@@ -234,7 +236,7 @@ async def get_orderbook(code: str):
     d = await kis.fetch_orderbook(code)
     if not d:
         raise HTTPException(503, "호가 조회 실패")
-    return d
+    return {**d, "next_ms": kis.poll_hint()}   # 클라이언트 갱신 간격 권장값
 
 
 @app.get("/api/stock/{code}/chart", summary="종목 차트")
@@ -382,6 +384,45 @@ async def ws_prices(websocket: WebSocket):
         pass
     finally:
         manager.disconnect(websocket)
+
+
+# ──────────────────────────────────────────────
+# 익명 사용 통계 · 의견 보내기
+# ──────────────────────────────────────────────
+class StatsIn(BaseModel):
+    v: str = ""
+    pages: dict = {}
+    events: dict = {}
+
+
+class FeedbackIn(BaseModel):
+    text: str
+    contact: str = ""
+    page: str = ""
+
+
+@app.post("/api/stats", include_in_schema=False)
+async def post_stats(body: StatsIn):
+    pages = {k: v for k, v in body.pages.items() if isinstance(v, list) and len(v) == 2}
+    await stats.record(body.v, pages, body.events)
+    return {"ok": True}
+
+
+@app.post("/api/feedback", summary="의견 보내기")
+async def post_feedback(body: FeedbackIn, request: Request):
+    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "")
+    ok, msg = await stats.add_feedback(body.text, body.contact, body.page, ip)
+    if not ok:
+        raise HTTPException(400, msg)
+    return {"ok": True}
+
+
+@app.get("/api/admin/stats", include_in_schema=False)
+async def admin_stats(days: int = 14, x_admin_key: str = Header("")):
+    key = os.getenv("ADMIN_KEY", "")
+    if not key or x_admin_key != key:
+        raise HTTPException(401, "관리자 키가 올바르지 않습니다.")
+    return await stats.summary(days)
 
 
 # ──────────────────────────────────────────────

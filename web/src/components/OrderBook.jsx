@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getOrderbook } from '../lib/api'
 import { fmtPrice, fmtRate, marketPhase, tone } from '../lib/format'
 
@@ -6,15 +6,21 @@ import { fmtPrice, fmtRate, marketPhase, tone } from '../lib/format'
 export default function OrderBook({ code, prevClose }) {
   const [book, setBook] = useState(null)
   const [failed, setFailed] = useState(false)
+  const bookRef = useRef(null)
 
   useEffect(() => {
     let alive = true
     let timer
     const load = () =>
       getOrderbook(code)
-        .then((d) => { if (alive) { setBook(d); setFailed(false) } })
+        .then((d) => { if (alive) { bookRef.current = d; setBook(d); setFailed(false) } })
         .catch(() => alive && setFailed(true))
-        .finally(() => { if (alive) timer = setTimeout(load, marketPhase().key === 'open' ? 3000 : 30000) })
+        .finally(() => {
+          // 서버가 부하에 맞춰 알려주는 간격(3~8초)을 따른다. 화면이 안 보이면 30초
+          if (!alive) return
+          const next = document.visibilityState !== 'visible' ? 30000 : marketPhase().key === 'open' ? (bookRef.current?.next_ms || 3000) : 30000
+          timer = setTimeout(load, next)
+        })
     load()
     return () => { alive = false; clearTimeout(timer) }
   }, [code])
@@ -53,7 +59,7 @@ export default function OrderBook({ code, prevClose }) {
       {book.bids.map((b) => <Row key={`b${b.price}`} side="bid" level={b} />)}
       <div className="ob-foot">
         <span className="down">{book.total_ask.toLocaleString()}</span>
-        <span className="muted">KRX+NXT 합산{time ? ` · ${time}` : ''}</span>
+        <span className="muted">{book.stale ? '접속 많음 · 잠시 지연' : 'KRX+NXT 합산'}{time ? ` · ${time}` : ''}</span>
         <span className="up">{book.total_bid.toLocaleString()}</span>
       </div>
     </div>

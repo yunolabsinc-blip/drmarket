@@ -8,6 +8,7 @@ import OrderBook from '../components/OrderBook'
 import { Disclaimer, Empty, Rate, StarIcon, SubBar } from '../components/ui'
 import { NewsItems } from '../components/NewsList'
 import { EventRows } from '../components/Calendar'
+import { track } from '../lib/analytics'
 
 // MTS 방식: 분봉(1·3·5·10·30·60) + 일·주·월·년봉
 const MINUTES = [1, 3, 5, 10, 30, 60]
@@ -104,7 +105,7 @@ export default function Stock({ code }) {
   const [detail, setDetail] = useState(null)
   const [failed, setFailed] = useState(false)
   const [period, setPeriodState] = useState(() => loadPeriod('drm.chartPeriod', 'D'))
-  const setPeriod = (v) => { setPeriodState(v); savePeriod('drm.chartPeriod', v) }
+  const setPeriod = (v) => { setPeriodState(v); savePeriod('drm.chartPeriod', v); track('chart_period') }
   const [view, setView] = useState('chart')
   const [news, setNews] = useState([])
   const [limits, setLimits] = useState(null)
@@ -162,7 +163,7 @@ export default function Stock({ code }) {
   return (
     <>
       <SubBar title="" right={
-        <button className={`icon-btn ${fav ? 'fav-on' : ''}`} onClick={() => toggleFavorite(code)}
+        <button className={`icon-btn ${fav ? 'fav-on' : ''}`} onClick={() => { if (!fav) track('fav_add'); toggleFavorite(code) }}
           aria-label={fav ? '관심종목 해제' : '관심종목 추가'} aria-pressed={fav}>
           <StarIcon filled={fav} />
         </button>
@@ -181,7 +182,7 @@ export default function Stock({ code }) {
 
         <div className="segmented">
           <button className={view === 'chart' ? 'on' : ''} onClick={() => setView('chart')}>차트</button>
-          <button className={view === 'book' ? 'on' : ''} onClick={() => setView('book')}>호가</button>
+          <button className={view === 'book' ? 'on' : ''} onClick={() => { if (view !== 'book') track('orderbook'); setView('book') }}>호가</button>
         </div>
         {view === 'chart' ? (
           <div className="card chart-card">
@@ -267,7 +268,7 @@ export default function Stock({ code }) {
               onChange={(e) => { setMemoText(e.target.value); setSaved(false) }} />
             <div className="memo-foot">
               <span>{memo.length}/500</span>
-              <button className="btn sm" onClick={() => { setMemo(code, memo.trim()); setSaved(true) }}>
+              <button className="btn sm" onClick={() => { setMemo(code, memo.trim()); setSaved(true); track('memo_save') }}>
                 {saved ? '저장됨' : '저장'}
               </button>
             </div>

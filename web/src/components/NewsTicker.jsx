@@ -3,6 +3,7 @@ import { getHeadlines } from '../lib/api'
 import { go } from '../lib/router'
 import { RelatedStocks, timeAgo } from './NewsList'
 import { CloseIcon } from './ui'
+import { track } from '../lib/analytics'
 
 // 하단 탭 위에 고정되는 주요 뉴스 띠: 5초마다 다음 기사, 3분마다 새로 조회.
 // 누르면 요약 창이 열리고, 거기서 기사 원문 또는 뉴스 화면으로 이동.
@@ -40,7 +41,7 @@ export default function NewsTicker({ hidden }) {
   const n = items[idx % items.length]
   return (
     <>
-      <button className="ticker" onClick={() => setSheet(n)} aria-label="주요 뉴스, 누르면 요약 보기">
+      <button className="ticker" onClick={() => { track('ticker_open'); setSheet(n) }} aria-label="주요 뉴스, 누르면 요약 보기">
         <span className={`ticker-badge ${n.kind === 'feature' ? 'feature' : ''}`}><i />{n.kind === 'feature' ? '특징주' : '뉴스'}</span>
         <span className="ticker-text" key={idx}>
           <b>{n.title}</b>
@@ -60,7 +61,7 @@ export default function NewsTicker({ hidden }) {
             <p className="sheet-desc">{sheet.desc || '이 기사는 요약이 제공되지 않습니다. 원문에서 확인해 주세요.'}</p>
             <RelatedStocks text={`${sheet.title} ${sheet.desc || ''}`} onNavigate={() => setSheet(null)} />
             <div className="sheet-actions">
-              <a className="btn" href={sheet.link} target="_blank" rel="noopener noreferrer">기사 원문 보기 ↗</a>
+              <a className="btn" href={sheet.link} target="_blank" rel="noopener noreferrer" onClick={() => track('news_link')}>기사 원문 보기 ↗</a>
               <button className="btn ghost" onClick={() => { setSheet(null); go('/market/news') }}>뉴스 바로가기</button>
             </div>
           </div>

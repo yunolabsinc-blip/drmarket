@@ -12,7 +12,7 @@ const LINKS = [
   { href: '#/watch', label: '관심종목' },
 ]
 
-export default function Menu({ onClose }) {
+export default function Menu({ onClose, onFeedback, onInstall }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -33,10 +33,15 @@ export default function Menu({ onClose }) {
         <nav className="menu-links">
           {LINKS.map((l) => <a key={l.href} href={l.href} onClick={onClose}>{l.label}</a>)}
         </nav>
+        <div className="menu-actions">
+          <button onClick={onInstall}><span>📲</span>홈 화면에 추가</button>
+          <button onClick={onFeedback}><span>💬</span>의견 보내기</button>
+        </div>
         <div className="menu-info">
           <b>서비스 안내</b>
           <p>시세는 한국투자증권 Open API의 KRX·넥스트레이드 통합 시세이며, 프리마켓(08:00)부터 애프터마켓(20:00)까지 5초 간격으로 갱신됩니다. 순위는 KRX 체결 기준이고, 테마 분류는 닥터마켓 자체 기준입니다.</p>
           <p>닥터마켓의 정보는 투자 참고용이며 투자 권유가 아닙니다. 투자 판단과 결과의 책임은 이용자에게 있습니다.</p>
+          <p>서비스 개선을 위해 화면별 이용 횟수·시간을 익명으로 집계합니다. 이름·연락처 등 개인정보는 수집하지 않습니다.</p>
         </div>
       </aside>
     </div>

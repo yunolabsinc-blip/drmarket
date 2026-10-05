@@ -1,6 +1,7 @@
 import { useMarket } from '../lib/store'
 import { fmtPrice, fmtRate, fmtWonShort, tone } from '../lib/format'
 import { go } from '../lib/router'
+import { track } from '../lib/analytics'
 
 export const SORTS = [
   { id: 'value', label: '거래대금 집중' },
@@ -40,7 +41,7 @@ function ThemeTile({ theme, rank, sort, total }) {
   const share = total ? (theme.value / total) * 100 : 0
 
   return (
-    <article className="tile" onClick={() => go(`/theme/${theme.id}`)}>
+    <article className="tile" onClick={() => { track('theme_open'); go(`/theme/${theme.id}`) }}>
       <header className="tile-head">
         <span className="tile-rank">{rank}</span>
         <b className="tile-name">{theme.name}</b>

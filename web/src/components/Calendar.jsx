@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getCalendar } from '../lib/api'
 import { go } from '../lib/router'
 import { Skeleton } from './ui'
+import { track } from '../lib/analytics'
 
 export const EVENT_TYPES = {
   holiday: { label: '휴장', cls: 'ev-holiday', dot: '#f04452' },
@@ -93,7 +94,7 @@ export default function Calendar() {
   const [scope, setScope] = useState('all')
   const [view, setView] = useState(() => { try { return localStorage.getItem('drm.calView') || 'list' } catch { return 'list' } })
   const [selected, setSelected] = useState(null)
-  const changeView = (v) => { setView(v); try { localStorage.setItem('drm.calView', v) } catch {} }
+  const changeView = (v) => { setView(v); if (v === 'month') track('calendar_month'); try { localStorage.setItem('drm.calView', v) } catch {} }
 
   useEffect(() => {
     let alive = true
