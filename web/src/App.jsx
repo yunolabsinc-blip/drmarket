@@ -4,6 +4,7 @@ import { useRoute } from './lib/router'
 import { TabBar, TopBar } from './components/ui'
 import Search from './components/Search'
 import Menu from './components/Menu'
+import NewsTicker from './components/NewsTicker'
 import Market from './pages/Market'
 import Home from './pages/Home'
 import Themes, { ThemeDetail } from './pages/Themes'
@@ -38,6 +39,7 @@ export default function App() {
       <div className="app">
         {!isSub && <TopBar onSearch={openSearch} onMenu={() => setMenuOpen(true)} />}
         <Screen route={route} openSearch={openSearch} />
+        <NewsTicker hidden={route.page === 'market' && route.param === 'news'} />
         <TabBar page={route.page} />
         {searching && <Search onClose={closeSearch} />}
         {menuOpen && <Menu onClose={closeMenu} />}

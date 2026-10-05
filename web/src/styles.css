@@ -15,6 +15,7 @@
   --line-strong: #d9dde2;
   --radius: 18px;
   --tabbar-h: 62px;
+  --ticker-h: 40px;
   --font: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
 }
 
@@ -38,7 +39,7 @@ b { font-weight: 650; }
 .muted { color: var(--text-3); }
 
 .app { max-width: 560px; margin: 0 auto; min-height: 100vh; background: var(--bg); position: relative; }
-.page { padding: 4px 16px calc(var(--tabbar-h) + 28px + env(safe-area-inset-bottom)); }
+.page { padding: 4px 16px calc(var(--tabbar-h) + var(--ticker-h) + 28px + env(safe-area-inset-bottom)); }
 
 /* ───────── 상단 바 ───────── */
 .topbar {
@@ -410,3 +411,21 @@ button.cal-row:hover { background: #fafbfc; }
 .limit-row span { flex: 1; font-weight: 600; }
 .limit-row small { color: var(--text-3); font-size: 12px; }
 .section-head h2 small { font-size: 12px; font-weight: 500; margin-left: 4px; }
+
+/* ───────── 하단 뉴스 띠 ───────── */
+.ticker {
+  position: fixed; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 560px; height: var(--ticker-h); z-index: 29;
+  display: flex; align-items: center; gap: 10px; padding: 0 14px;
+  background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid var(--line); overflow: hidden; text-align: left;
+}
+.ticker-badge { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 750; color: var(--up); }
+.ticker-badge i { width: 6px; height: 6px; border-radius: 50%; background: var(--up); animation: blink 1.6s infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
+.ticker-text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; animation: ticker-in .35s ease-out; }
+.ticker-text b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ticker-text small { flex: none; font-size: 11px; color: var(--text-3); }
+.ticker-count { flex: none; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+@keyframes ticker-in { from { opacity: 0; transform: translateY(10px); } }
+@media (max-width: 400px) { .ticker-text small { display: none; } }

@@ -56,9 +56,11 @@ async def _google_rss(query: str, when: str = "") -> list[dict]:
         title = it.findtext("title") or ""
         src = it.find("source")
         source = src.text.strip() if src is not None and src.text else ""
-        # 구글 RSS 제목은 "제목 - 매체명" 형식
+        # 구글 RSS 제목은 "제목 - 매체명" 형식 (매체명 표기가 source와 다를 수 있어 짧은 꼬리는 그냥 뗀다)
         if source and title.endswith(f" - {source}"):
             title = title[: -len(source) - 3]
+        else:
+            title = re.sub(r"\s+-\s+[^-]{1,30}$", "", title)
         try:
             dt = parsedate_to_datetime(it.findtext("pubDate") or "")
         except Exception:
