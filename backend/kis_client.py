@@ -16,6 +16,9 @@ from typing import Any
 
 import httpx
 import websockets
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,38 @@ APP_SECRET = CFG["app_secret"]
 # 토큰 캐시
 # ──────────────────────────────────────────────
 _token_cache: dict[str, Any] = {"access_token": None, "expires_at": 0, "approval_key": None}
+_token_lock = asyncio.Lock()
+
+# KIS 초당 호출 한도: 실전 20건, 모의 2건 → 여유를 두고 제한
+_RATE_PER_SEC = 15 if KIS_MODE == "real" else 2
+_rate_lock = asyncio.Lock()
+_last_call = 0.0
+
+
+async def _throttle():
+    global _last_call
+    async with _rate_lock:
+        wait = _last_call + 1 / _RATE_PER_SEC - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _last_call = time.monotonic()
+
+
+# 짧은 응답 캐시 (같은 데이터를 여러 클라이언트가 동시에 요청할 때 KIS 호출 절약)
+_resp_cache: dict[str, tuple[float, Any]] = {}
+# 최근 KIS 오류 (디버그용, /api/token/status 에 노출)
+last_errors: dict[str, str] = {}
+
+
+def _cache_get(key: str, ttl: float):
+    hit = _resp_cache.get(key)
+    if hit and time.monotonic() - hit[0] < ttl:
+        return hit[1]
+    return None
+
+
+def _cache_set(key: str, value: Any):
+    _resp_cache[key] = (time.monotonic(), value)
 
 # ──────────────────────────────────────────────
 # Mock 데이터 (API 미설정 시 사용)
@@ -103,7 +138,12 @@ def _simulate_price(base: float) -> dict:
 
 
 def _is_configured() -> bool:
-    return bool(APP_KEY and APP_SECRET and len(APP_KEY) > 10)
+    placeholders = ("your_", "change_me", "example")
+    values = (APP_KEY.strip().lower(), APP_SECRET.strip().lower())
+    return all(
+        len(value) > 10 and not any(marker in value for marker in placeholders)
+        for value in values
+    )
 
 
 # ──────────────────────────────────────────────
@@ -111,14 +151,22 @@ def _is_configured() -> bool:
 # ──────────────────────────────────────────────
 async def get_access_token() -> str | None:
     """액세스 토큰 발급/캐시 반환"""
-    now = time.time()
-    if _token_cache["access_token"] and now < _token_cache["expires_at"] - 300:
+    if _token_cache["access_token"] and time.time() < _token_cache["expires_at"] - 300:
         return _token_cache["access_token"]
 
     if not _is_configured():
         logger.warning("[KIS] API 키 미설정 — 시뮬레이션 모드")
         return None
 
+    # 동시 요청이 각자 토큰을 발급받지 않도록 직렬화 (KIS 토큰 발급은 1분당 1회 제한)
+    async with _token_lock:
+        if _token_cache["access_token"] and time.time() < _token_cache["expires_at"] - 300:
+            return _token_cache["access_token"]
+        return await _issue_token()
+
+
+async def _issue_token() -> str | None:
+    now = time.time()
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
@@ -182,22 +230,31 @@ async def _get(path: str, params: dict, tr_id: str) -> dict | None:
     token = await get_access_token()
     if not token:
         return None
-    try:
-        async with httpx.AsyncClient(timeout=10, verify=False) as client:
-            resp = await client.get(
-                f"{BASE_URL}{path}",
-                params=params,
-                headers=_auth_headers(token, tr_id),
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if data.get("rt_cd") != "0":
-                logger.warning("[KIS] API 오류: %s", data.get("msg1"))
-                return None
+    for attempt in range(2):
+        await _throttle()
+        try:
+            async with httpx.AsyncClient(timeout=10, verify=False) as client:
+                resp = await client.get(
+                    f"{BASE_URL}{path}",
+                    params=params,
+                    headers=_auth_headers(token, tr_id),
+                )
+                data = resp.json()
+        except Exception as e:
+            logger.error("[KIS] GET %s 실패: %s", path, e)
+            status = locals().get("resp").status_code if locals().get("resp") is not None else "-"
+            last_errors[tr_id] = f"HTTP {status} {type(e).__name__}: {str(e)[:120]}"
+            return None
+        if data.get("rt_cd") == "0":
             return data
-    except Exception as e:
-        logger.error("[KIS] GET %s 실패: %s", path, e)
+        # EGW00201 = 초당 거래건수 초과 → 잠깐 쉬고 한 번 더
+        if data.get("msg_cd") == "EGW00201" and attempt == 0:
+            await asyncio.sleep(1)
+            continue
+        logger.warning("[KIS] API 오류 %s %s: %s", tr_id, data.get("msg_cd"), data.get("msg1"))
+        last_errors[tr_id] = f"{data.get('msg_cd')} {data.get('msg1')}"
         return None
+    return None
 
 
 # ──────────────────────────────────────────────
@@ -205,6 +262,9 @@ async def _get(path: str, params: dict, tr_id: str) -> dict | None:
 # ──────────────────────────────────────────────
 async def fetch_market_indices() -> list[dict]:
     """코스피·코스닥 지수 조회"""
+    cached = _cache_get("indices", 10)
+    if cached:
+        return cached
     token = await get_access_token()
     if not token:
         return _mock_indices()
@@ -223,12 +283,9 @@ async def fetch_market_indices() -> list[dict]:
         if data and data.get("output"):
             o = data["output"]
             cur  = float(o.get("bstp_nmix_prpr", 0))
-            prev = float(o.get("bstp_nmix_prdy_clpr", cur))
-            chg  = round(cur - prev, 2)
+            chg  = round(float(o.get("bstp_nmix_prdy_vrss", 0)), 2)
             rate = round(float(o.get("bstp_nmix_prdy_ctrt", 0)), 2)
-            results.append({"name": name, "value": cur, "change": chg, "changeRate": rate, "flag": flag})
-        else:
-            results.append(_mock_index_for(name, flag))
+            results.append({"name": name, "value": cur, "change": chg, "changeRate": rate, "flag": flag, "source": "live"})
 
     # 해외 지수는 시뮬레이션 (KIS API 미지원)
     results += [
@@ -237,6 +294,8 @@ async def fetch_market_indices() -> list[dict]:
         {"name": "나스닥",    "value": round(19432.1 + random.uniform(-100, 100), 2), "change": round(random.uniform(-80, 80), 2), "changeRate": round(random.uniform(-0.5, 0.5), 2), "flag": "🇺🇸"},
         {"name": "다우",      "value": round(42315.6 + random.uniform(-200, 200), 2), "change": round(random.uniform(-200, 200), 2), "changeRate": round(random.uniform(-0.5, 0.5), 2), "flag": "🇺🇸"},
     ]
+    if any(r.get("source") == "live" for r in results):
+        _cache_set("indices", results)
     return results
 
 
@@ -262,7 +321,15 @@ def _mock_indices() -> list[dict]:
 # 주식 현재가
 # ──────────────────────────────────────────────
 async def fetch_stock_price(code: str) -> dict:
-    """단일 종목 현재가 조회"""
+    """단일 종목 현재가 조회 (source: live=실제, demo=키 미설정 시뮬레이션, error=조회 실패)"""
+    cached = _cache_get(f"price:{code}", 3)
+    if cached:
+        return cached
+    if not _is_configured():
+        meta = _MOCK_STOCKS.get(code, {"name": code, "base": 10000, "market": "KOSPI"})
+        return {"code": code, "name": meta["name"], "market": meta["market"], "source": "demo",
+                **_simulate_price(meta["base"])}
+
     data = await _get(
         "/uapi/domestic-stock/v1/quotations/inquire-price",
         {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
@@ -276,9 +343,10 @@ async def fetch_stock_price(code: str) -> dict:
         change_rate = float(o.get("prdy_ctrt", 0))
         volume     = int(o.get("acml_vol", 0))
         t_value    = int(o.get("acml_tr_pbmn", 0))
-        return {
+        result = {
             "code": code,
             "name": o.get("hts_kor_isnm", ""),
+            "source": "live",
             "price": price,
             "prev_close": prev_close,
             "change": change,
@@ -286,11 +354,54 @@ async def fetch_stock_price(code: str) -> dict:
             "volume": volume,
             "trading_value": t_value,
         }
+        _cache_set(f"price:{code}", result)
+        return result
 
-    # 시뮬레이션 폴백
-    meta = _MOCK_STOCKS.get(code, {"name": code, "base": 10000, "market": "KOSPI"})
-    sim = _simulate_price(meta["base"])
-    return {"code": code, "name": meta["name"], "market": meta["market"], **sim}
+    # 키는 있는데 조회 실패 — 가짜 가격을 만들지 않고 실패로 알림
+    return {"code": code, "source": "error", "price": 0}
+
+
+async def fetch_batch_prices(codes: list[str]) -> list[dict]:
+    """
+    여러 종목 현재가. 실전 모드는 관심종목 멀티 시세(30종목/1회)로 조회하고,
+    실패하거나 모의 모드면 종목별 조회로 대체.
+    """
+    results: dict[str, dict] = {}
+    if _is_configured() and KIS_MODE == "real":
+        for i in range(0, len(codes), 30):
+            chunk = [c for c in codes[i:i + 30] if not _cache_get(f"price:{c}", 3)]
+            if not chunk:
+                continue
+            params = {}
+            for n, c in enumerate(chunk, 1):
+                params[f"FID_COND_MRKT_DIV_CODE_{n}"] = "J"
+                params[f"FID_INPUT_ISCD_{n}"] = c
+            data = await _get("/uapi/domestic-stock/v1/quotations/intstock-multprice", params, "FHKST11300006")
+            for o in (data or {}).get("output", []) or []:
+                c = o.get("inter_shrn_iscd", "")
+                price = int(float(o.get("inter2_prpr", 0) or 0))
+                if not c or price <= 0:
+                    continue
+                prev = int(float(o.get("inter2_prdy_clpr", 0) or 0)) or price
+                item = {
+                    "code": c,
+                    "name": o.get("inter_kor_isnm", ""),
+                    "source": "live",
+                    "price": price,
+                    "prev_close": prev,
+                    "change": int(float(o.get("inter2_prdy_vrss", 0) or 0)),
+                    "change_rate": float(o.get("prdy_ctrt", 0) or 0),
+                    "volume": int(float(o.get("acml_vol", 0) or 0)),
+                    "trading_value": int(float(o.get("acml_tr_pbmn", 0) or 0)),
+                }
+                _cache_set(f"price:{c}", item)
+                results[c] = item
+
+    missing = [c for c in codes if c not in results]
+    singles = await asyncio.gather(*[fetch_stock_price(c) for c in missing])
+    for item in singles:
+        results[item["code"]] = item
+    return [results[c] for c in codes]
 
 
 # ──────────────────────────────────────────────
@@ -303,7 +414,14 @@ async def fetch_volume_rank(market: str = "J", sort: str = "amount") -> list[dic
     """
     # FID_INPUT_ISCD: 0000=전체, 0001=KOSPI, 1001=KOSDAQ
     mrkt_code = "0001" if market == "J" else ("1001" if market == "Q" else "0000")
-    sort_code  = "1" if sort == "amount" else "2"   # 1=거래대금, 2=거래량
+    # FID_BLNG_CLS_CODE: 0=평균거래량, 3=거래금액순
+    blng_code = "3" if sort == "amount" else "0"
+    cache_key = f"vrank:{mrkt_code}:{blng_code}"
+    cached = _cache_get(cache_key, 10)
+    if cached:
+        return cached
+    if not _is_configured():
+        return _mock_ranking("amount" if sort == "amount" else "volume")
 
     data = await _get(
         "/uapi/domestic-stock/v1/quotations/volume-rank",
@@ -312,7 +430,7 @@ async def fetch_volume_rank(market: str = "J", sort: str = "amount") -> list[dic
             "FID_COND_SCR_DIV_CODE":  "20171",
             "FID_INPUT_ISCD":         mrkt_code,
             "FID_DIV_CLS_CODE":       "0",
-            "FID_BLNG_CLS_CODE":      "0",
+            "FID_BLNG_CLS_CODE":      blng_code,
             "FID_TRGT_CLS_CODE":      "111111111",
             "FID_TRGT_EXLS_CLS_CODE": "0000000000",
             "FID_INPUT_PRICE_1":      "0",
@@ -320,18 +438,19 @@ async def fetch_volume_rank(market: str = "J", sort: str = "amount") -> list[dic
             "FID_VOL_CNT":            "0",
             "FID_INPUT_DATE_1":       "",
         },
-        "FHPST01700000",
+        "FHPST01710000",
     )
 
     if data and data.get("output"):
         rows = []
         for i, o in enumerate(data["output"][:20], 1):
             price = int(o.get("stck_prpr", 0))
-            prev  = int(o.get("stck_sdpr", price))
+            prev  = price - int(o.get("prdy_vrss", 0))
             rows.append({
                 "rank":         i,
                 "code":         o.get("mksc_shrn_iscd", ""),
                 "name":         o.get("hts_kor_isnm", ""),
+                "source":       "live",
                 "market":       "KOSPI" if o.get("bstp_kor_isnm","").startswith("코스피") else "KOSDAQ",
                 "price":        price,
                 "prev_close":   prev,
@@ -340,15 +459,23 @@ async def fetch_volume_rank(market: str = "J", sort: str = "amount") -> list[dic
                 "volume":       int(o.get("acml_vol", 0)),
                 "trading_value": int(o.get("acml_tr_pbmn", 0)),
             })
+        _cache_set(cache_key, rows)
         return rows
 
-    return _mock_ranking("amount" if sort == "amount" else "volume")
+    return []
 
 
 async def fetch_change_rank(direction: str = "up") -> list[dict]:
     """상승률(up) / 하락률(down) 상위 종목"""
+    cache_key = f"crank:{direction}"
+    cached = _cache_get(cache_key, 10)
+    if cached:
+        return cached
+    if not _is_configured():
+        return _mock_ranking("change_up" if direction == "up" else "change_down")
+
     data = await _get(
-        "/uapi/domestic-stock/v1/quotations/fluctuation-rank",
+        "/uapi/domestic-stock/v1/ranking/fluctuation",
         {
             "FID_COND_MRKT_DIV_CODE": "J",
             "FID_COND_SCR_DIV_CODE":  "20170",
@@ -356,13 +483,14 @@ async def fetch_change_rank(direction: str = "up") -> list[dict]:
             "FID_RANK_SORT_CLS_CODE": "0" if direction == "up" else "1",
             "FID_INPUT_CNT_1":        "0",
             "FID_PRC_CLS_CODE":       "0",
-            "FID_INPUT_PRICE_1":      "0",
-            "FID_INPUT_PRICE_2":      "0",
-            "FID_VOL_CNT":            "0",
+            "FID_INPUT_PRICE_1":      "",
+            "FID_INPUT_PRICE_2":      "",
+            "FID_VOL_CNT":            "",
             "FID_TRGT_CLS_CODE":      "0",
             "FID_TRGT_EXLS_CLS_CODE": "0",
             "FID_DIV_CLS_CODE":       "0",
-            "FID_RST_DIV_CODE":       "0",
+            "FID_RSFL_RATE1":         "",
+            "FID_RSFL_RATE2":         "",
         },
         "FHPST01700000",
     )
@@ -371,11 +499,12 @@ async def fetch_change_rank(direction: str = "up") -> list[dict]:
         rows = []
         for i, o in enumerate(data["output"][:20], 1):
             price = int(o.get("stck_prpr", 0))
-            prev  = int(o.get("stck_sdpr", price))
+            prev  = price - int(o.get("prdy_vrss", 0))
             rows.append({
                 "rank":         i,
-                "code":         o.get("mksc_shrn_iscd", ""),
+                "code":         o.get("stck_shrn_iscd", "") or o.get("mksc_shrn_iscd", ""),
                 "name":         o.get("hts_kor_isnm", ""),
+                "source":       "live",
                 "market":       "KOSDAQ" if o.get("mksc_shrn_iscd","").startswith("9") else "KOSPI",
                 "price":        price,
                 "prev_close":   prev,
@@ -384,9 +513,15 @@ async def fetch_change_rank(direction: str = "up") -> list[dict]:
                 "volume":       int(o.get("acml_vol", 0)),
                 "trading_value": int(o.get("acml_tr_pbmn", 0)),
             })
+        # 감자·거래재개 등으로 반대 방향 종목이 섞여 나오는 경우 제외
+        rows = [r for r in rows if (r["change_rate"] > 0) == (direction == "up")]
+        for i, r in enumerate(rows, 1):
+            r["rank"] = i
+        _cache_set(cache_key, rows)
         return rows
 
-    return _mock_ranking("change_up" if direction == "up" else "change_down")
+    last_errors["FHPST01700000"] = "빈 응답" if data else last_errors.get("FHPST01700000", "응답 없음")
+    return []
 
 
 # ──────────────────────────────────────────────
@@ -507,7 +642,7 @@ async def realtime_price_stream(codes: list[str]):
             for code in codes:
                 meta = _MOCK_STOCKS.get(code, {"name": code, "base": 10000})
                 sim  = _simulate_price(meta["base"])
-                yield {"code": code, "name": meta.get("name", code), **sim}
+                yield {"code": code, "name": meta.get("name", code), "source": "demo", **sim}
             await asyncio.sleep(1.5)
         return
 
@@ -552,6 +687,7 @@ async def realtime_price_stream(codes: list[str]):
                         vol    = int(fields[8]) if len(fields) > 8 else 0
                         yield {
                             "code":        code,
+                            "source":      "live",
                             "price":       price,
                             "prev_close":  prev,
                             "change":      price - prev,

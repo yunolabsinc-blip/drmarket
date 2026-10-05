@@ -661,14 +661,25 @@ const LS = {
 };
 
 // ======================== API CONFIG ========================
-// Railway 배포 후 아래 URL을 실제 서버 주소로 교체하세요.
-// 예) const API_BASE = 'https://drmarket-api.up.railway.app'
-const API_BASE = (
-  window.DRMARKET_API_URL ||
-  localStorage.getItem('drmarket_api') ||
-  'https://drmarket-production.up.railway.app'
-);
-const WS_BASE  = API_BASE ? API_BASE.replace(/^http/, 'ws') : '';
+// 백엔드(Vercel) 주소. 테스트용으로 localStorage 'drmarket_api'에 다른 주소를 넣으면 그쪽을 씁니다.
+const DEFAULT_API = 'https://drmarket-api.vercel.app';
+const API_BASE = (() => {
+  if (window.DRMARKET_API_URL) return window.DRMARKET_API_URL;
+  try {
+    const saved = localStorage.getItem('drmarket_api');
+    // 예전 Railway 주소가 남아 있으면 무시하고 지움
+    if (saved && saved.includes('railway.app')) localStorage.removeItem('drmarket_api');
+    else if (saved) return saved;
+  } catch {}
+  return DEFAULT_API;
+})();
+
+// 장 운영 시간(평일 09:00~15:30 KST)에는 자주, 그 외에는 드물게 갱신
+function isMarketOpen() {
+  const kst = new Date(Date.now() + 9 * 3600 * 1000);
+  const day = kst.getUTCDay(), min = kst.getUTCHours() * 60 + kst.getUTCMinutes();
+  return day >= 1 && day <= 5 && min >= 9 * 60 && min <= 15 * 60 + 30;
+}
 
 async function apiFetch(path, fallback) {
   if (!API_BASE) return fallback;
@@ -692,7 +703,6 @@ function useRealtimeData() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const prev = useRef({});
-  const wsRef = useRef(null);
   const apiLive = useRef(false);   // API 연결 여부 추적
 
   // API 필드명 → 프론트엔드 필드명 변환
@@ -713,11 +723,11 @@ function useRealtimeData() {
     const codes = [...new Set(THEMES_BASE.flatMap(t => t.stocks.map(s => s.code.replace(/^A/, ''))))];
     const priceMap = {};
 
-    // 1차: batch price API 시도
-    for (let i = 0; i < codes.length; i += 20) {
-      const batch = codes.slice(i, i + 20);
+    // 1차: batch price API (실제 시세만 반영 — demo/error 응답은 버림)
+    for (let i = 0; i < codes.length; i += 100) {
+      const batch = codes.slice(i, i + 100);
       const data = await apiFetch(`/api/stock/batch/prices?codes=${batch.join(',')}`, null);
-      if (data?.stocks) data.stocks.forEach(s => { if (s.code && s.price > 0) priceMap[s.code] = s; });
+      if (data?.stocks) data.stocks.forEach(s => { if (s.code && s.price > 0 && s.source === 'live') priceMap[s.code] = s; });
     }
 
     // 2차 폴백: 랭킹 API 데이터 활용 (batch가 실패했을 때)
@@ -735,7 +745,7 @@ function useRealtimeData() {
       });
     }
 
-    if (Object.keys(priceMap).length === 0) return;
+    if (Object.keys(priceMap).length === 0) return false;
     const flash = {};
     setThemes(prev_t => prev_t.map(theme => {
       // 종목 가격 업데이트
@@ -770,6 +780,7 @@ function useRealtimeData() {
     }));
     if (Object.keys(flash).length) { setFlashMap(flash); setTimeout(() => setFlashMap({}), 400); }
     setLastUpdated(new Date());
+    return true;
   }, []);
 
   // 랭킹 전체 갱신 — 결과를 반환해서 테마 가격 폴백에도 사용
@@ -780,11 +791,12 @@ function useRealtimeData() {
       apiFetch('/api/ranking/volume', null),
       apiFetch('/api/ranking/views', null),
     ]);
+    const live = (d) => d?.ranking?.length && d.ranking[0].source === 'live';
     const newRanking = {
-      volume_amount: ra?.ranking     ? ra.ranking.map(toFront)     : RANKING_BASE.volume_amount,
-      change_rate:   rc?.ranking     ? rc.ranking.map(toFront)     : RANKING_BASE.change_rate,
-      trade_volume:  rv?.ranking     ? rv.ranking.map(toFront)     : RANKING_BASE.trade_volume,
-      views:         rviews?.ranking ? rviews.ranking.map(toFront) : RANKING_BASE.views,
+      volume_amount: live(ra)     ? ra.ranking.map(toFront)     : RANKING_BASE.volume_amount,
+      change_rate:   live(rc)     ? rc.ranking.map(toFront)     : RANKING_BASE.change_rate,
+      trade_volume:  live(rv)     ? rv.ranking.map(toFront)     : RANKING_BASE.trade_volume,
+      views:         live(rviews) ? rviews.ranking.map(toFront) : RANKING_BASE.views,
     };
     setRanking(newRanking);
     return newRanking;
@@ -793,7 +805,10 @@ function useRealtimeData() {
   // 지수 갱신
   const refreshIndices = useCallback(async () => {
     const d = await apiFetch('/api/market/indices', null);
-    if (d?.indices) setIndices(d.indices);
+    if (!d?.indices) return;
+    // 실제 값이 온 지수(코스피·코스닥)만 교체
+    const liveMap = Object.fromEntries(d.indices.filter(i => i.source === 'live').map(i => [i.name, i]));
+    if (Object.keys(liveMap).length) setIndices(idx => idx.map(i => liveMap[i.name] ? {...i, ...liveMap[i.name]} : i));
   }, []);
 
   // 오프라인 시뮬레이션 (API 완전 없을 때만)
@@ -822,78 +837,56 @@ function useRealtimeData() {
   }, []);
 
   useEffect(() => {
-    let simId = null;
-    let refreshIntervalId = null;
+    if (!API_BASE) { const simId = startSimulation(); setApiStatus('simulation'); return () => clearInterval(simId); }
 
-    // 서버 없으면 바로 시뮬레이션
-    if (!API_BASE) { simId = startSimulation(); setApiStatus('simulation'); return () => clearInterval(simId); }
+    let stopped = false;
+    let priceTimer = null, fullTimer = null;
 
-    // 최초 실시간 데이터 로드
-    (async () => {
-      const [, rankData] = await Promise.all([refreshIndices(), refreshRanking()]);
-      await refreshThemePrices(rankData);
-      apiLive.current = true;
-      // 30초마다 전체 갱신
-      refreshIntervalId = setInterval(async () => {
-        const [, newRankData] = await Promise.all([refreshIndices(), refreshRanking()]);
-        await refreshThemePrices(newRankData);
-      }, 30000);
-    })();
-
-    // WebSocket 실시간 연결 (추가 구독 종목 실시간 업데이트용)
-    const connectWS = () => {
-      try {
-        const ws = new WebSocket(WS_BASE + '/ws/prices');
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          setApiStatus('live');
-          console.log('[WS] 서버 연결됨:', WS_BASE);
-          if (simId) { clearInterval(simId); simId = null; }
-          const ping = setInterval(() => ws.readyState === 1 && ws.send(JSON.stringify({action:'ping'})), 20000);
-          ws._ping = ping;
-        };
-
-        ws.onmessage = (e) => {
-          try {
-            const msg = JSON.parse(e.data);
-            if (msg.type !== 'price') return;
-            const tick = msg.data;
-            const flash = {};
-            const prevP = prev.current[tick.code];
-            if (prevP !== undefined && prevP !== tick.price)
-              flash[tick.code] = tick.price > prevP ? 'up' : 'down';
-            prev.current[tick.code] = tick.price;
-            setThemes(themes => themes.map(theme => ({
-              ...theme,
-              stocks: theme.stocks.map(s =>
-                s.code === ('A' + tick.code) || s.code === tick.code
-                  ? {...s, price: tick.price, change: tick.change_rate}
-                  : s
-              )
-            })));
-            if (Object.keys(flash).length) { setFlashMap(flash); setTimeout(() => setFlashMap({}), 400); }
-          } catch {}
-        };
-
-        ws.onerror = () => { setApiStatus('error'); };
-        ws.onclose = () => {
-          clearInterval(ws._ping);
-          setApiStatus('reconnecting');
-          setTimeout(connectWS, 5000);
-        };
-      } catch(e) {
-        setApiStatus('error');
-        setTimeout(connectWS, 5000);
-      }
+    // 서버 상태 확인: 응답 없음 → 연결 오류, 키 미설정 → 데모(가짜 값은 화면에 반영하지 않음)
+    const checkHealth = async () => {
+      const h = await apiFetch('/health', null);
+      if (stopped) return null;
+      if (!h) { setApiStatus('error'); return null; }
+      if (!h.api_configured) setApiStatus('demo');
+      return h;
     };
 
-    connectWS();
+    const full = async () => {
+      const h = await checkHealth();
+      if (!h || !h.api_configured || stopped) return;
+      const [, rankData] = await Promise.all([refreshIndices(), refreshRanking()]);
+      const ok = await refreshThemePrices(rankData);
+      if (!stopped) setApiStatus(ok ? 'live' : 'error');
+    };
+
+    // 테마 종목 가격: 장중 5초, 장외 60초
+    const schedulePrices = () => {
+      priceTimer = setTimeout(async () => {
+        if (apiLive.current && document.visibilityState === 'visible') {
+          const ok = await refreshThemePrices(null);
+          if (!stopped) setApiStatus(s => s === 'demo' ? s : (ok ? 'live' : 'error'));
+        }
+        if (!stopped) schedulePrices();
+      }, isMarketOpen() ? 5000 : 60000);
+    };
+
+    (async () => {
+      await full();
+      apiLive.current = true;
+      schedulePrices();
+      // 지수·랭킹·서버 상태는 30초마다
+      fullTimer = setInterval(() => { if (document.visibilityState === 'visible') full(); }, 30000);
+    })();
+
+    // 다른 탭에 있다가 돌아오면 즉시 갱신
+    const onVisible = () => { if (document.visibilityState === 'visible' && apiLive.current) full(); };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
-      clearInterval(simId);
-      clearInterval(refreshIntervalId);
-      if (wsRef.current) wsRef.current.close();
+      stopped = true;
+      clearTimeout(priceTimer);
+      clearInterval(fullTimer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [startSimulation, refreshIndices, refreshThemePrices, refreshRanking]);
 
@@ -901,7 +894,8 @@ function useRealtimeData() {
     if (refreshing) return;
     setRefreshing(true);
     const [, rankData] = await Promise.all([refreshIndices(), refreshRanking()]);
-    await refreshThemePrices(rankData);
+    const ok = await refreshThemePrices(rankData);
+    setApiStatus(s => s === 'demo' ? s : (ok ? 'live' : 'error'));
     setRefreshing(false);
   }, [refreshing, refreshIndices, refreshThemePrices, refreshRanking]);
 
@@ -912,6 +906,7 @@ function useRealtimeData() {
 
 const STATUS_META = {
   live:         { dot: '#4ade80', label: '실시간 연결됨' },
+  demo:         { dot: '#94a3b8', label: 'API 키 미설정' },
   connecting:   { dot: '#facc15', label: '연결 중...' },
   reconnecting: { dot: '#fb923c', label: '재연결 중...' },
   error:        { dot: '#f87171', label: '연결 오류' },
@@ -1220,7 +1215,7 @@ function StockDetail({stock, favs, onClose, onToggleFav}) {
     if (!API_BASE) return;
     const rawCode = stock.code.replace(/^A/, '');
     apiFetch(`/api/stock/${rawCode}/price`, null).then(d => {
-      if (d && d.price) { setLivePrice(d.price); setLiveChange(d.change_rate ?? null); }
+      if (d && d.price && d.source === 'live') { setLivePrice(d.price); setLiveChange(d.change_rate ?? null); }
     });
   }, [stock.code]);
   const displayPrice = livePrice ?? stock.price;

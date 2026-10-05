@@ -42,7 +42,8 @@ class ConnectionManager:
         logger.info("[WS] 클라이언트 연결 (총 %d)", len(self.active))
 
     def disconnect(self, ws: WebSocket):
-        self.active.remove(ws)
+        if ws in self.active:
+            self.active.remove(ws)
         logger.info("[WS] 클라이언트 해제 (총 %d)", len(self.active))
 
     async def broadcast(self, message: dict):
@@ -61,10 +62,13 @@ manager = ConnectionManager()
 
 # 기본 구독 종목 (WebSocket 브로드캐스트용)
 DEFAULT_WATCH = [
-    "005930","000660","373220","207940","028300",
-    "068270","042660","012450","035420","035720",
-    "097230","036800","950200","058990","302430",
-    "352820","009540",
+    "097230","000100","009540","042660","030520","319400",
+    "096690","234690","034020","009290","005930","009150",
+    "145020","263720","078520","950130","950200","095500",
+    "035620","058420","036800","033560","046310","044990",
+    "058990","302430","000990","047560","373220","006400",
+    "051910","000270","012450","047050","064350","272210",
+    "028300","207940","068270","000020",
 ]
 
 # ──────────────────────────────────────────────
@@ -80,6 +84,11 @@ async def _broadcast_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Vercel 같은 서버리스에서는 상시 실행 루프를 돌릴 수 없으므로 REST 폴링만 사용
+    if os.getenv("VERCEL"):
+        logger.info("[서버] 서버리스 모드 — 실시간 WebSocket 비활성화 (%s)", kis.KIS_MODE)
+        yield
+        return
     task = asyncio.create_task(_broadcast_loop())
     logger.info("[서버] 시작 완료 — 모드: %s", kis.KIS_MODE)
     yield
@@ -160,6 +169,7 @@ async def health():
         "status": "ok",
         "mode": kis.KIS_MODE,
         "api_configured": kis._is_configured(),
+        "realtime_ws": not os.getenv("VERCEL"),
         "ws_clients": len(manager.active),
         "time": datetime.now().isoformat(),
     }
@@ -191,10 +201,9 @@ async def get_stock_price(code: str):
 
 @app.get("/api/stock/batch/prices", summary="복수 종목 현재가")
 async def get_batch_prices(codes: str = Query(..., description="쉼표 구분 종목코드, 예) 005930,000660,028300")):
-    """최대 20개 종목 동시 조회"""
-    code_list = [c.strip() for c in codes.split(",")][:20]
-    results = await asyncio.gather(*[kis.fetch_stock_price(c) for c in code_list])
-    return {"stocks": list(results)}
+    """최대 100개 종목 동시 조회"""
+    code_list = list(dict.fromkeys(c.strip().lstrip("A") for c in codes.split(",") if c.strip()))[:100]
+    return {"stocks": await kis.fetch_batch_prices(code_list)}
 
 
 # ──────────────────────────────────────────────
@@ -299,6 +308,11 @@ async def ws_prices(websocket: WebSocket):
     ```
     """
     await manager.connect(websocket)
+    await websocket.send_json({
+        "type": "status",
+        "source": "live" if kis._is_configured() else "demo",
+        "mode": kis.KIS_MODE,
+    })
     try:
         while True:
             # 클라이언트 핑 수신 (연결 유지)
@@ -330,6 +344,7 @@ async def token_status():
         "configured": kis._is_configured(),
         "has_token":  bool(cache["access_token"]),
         "expires_in": max(0, int(cache["expires_at"] - time.time())),
+        "last_errors": kis.last_errors,
     }
 
 
