@@ -61,7 +61,8 @@ def _parse_date(s: str) -> datetime | None:
     if not s:
         return None
     try:
-        return parsedate_to_datetime(s)
+        dt = parsedate_to_datetime(s)
+        return dt if dt.tzinfo else dt.replace(tzinfo=KST)   # 시간대 없는 피드는 한국 시간으로
     except Exception:
         pass
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"):
