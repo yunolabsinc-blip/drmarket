@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import ThemeGrid, { SortToggle } from '../components/ThemeGrid'
 import { Headlines } from '../components/NewsList'
+import THEMES from '../data/themes.json'
+const THEME_COUNT = THEMES.length
 import { useMarket } from '../lib/store'
 import { getIndexChart } from '../lib/api'
 import { fmtIndex, fmtRate, tone } from '../lib/format'
@@ -59,6 +61,7 @@ export default function Home() {
       <Section title="실시간 테마" more={{ href: '#/themes', label: '전체 테마' }}>
         <SortToggle value={sort} onChange={changeSort} />
         <ThemeGrid sort={sort} limit={6} />
+        <a className="btn wide" href="#/themes">전체 테마 보기 ({THEME_COUNT}개) →</a>
       </Section>
       <Section title="거래대금 상위" more={{ href: '#/rank', label: '전체 순위' }}>
         <TopValue />

@@ -40,7 +40,7 @@ export default function App() {
         {!isSub && <TopBar onSearch={openSearch} onMenu={() => setMenuOpen(true)} />}
         <Screen route={route} openSearch={openSearch} />
         <NewsTicker hidden={route.page === 'market' && route.param === 'news'} />
-        <TabBar page={route.page} />
+        <TabBar page={route.page} param={route.param} />
         {searching && <Search onClose={closeSearch} />}
         {menuOpen && <Menu onClose={closeMenu} />}
       </div>

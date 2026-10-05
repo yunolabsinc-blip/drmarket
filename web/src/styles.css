@@ -475,3 +475,6 @@ button.cal-row:hover { background: #fafbfc; }
 .month-grid .dots { display: flex; gap: 3px; height: 5px; }
 .month-grid .dots b { width: 5px; height: 5px; border-radius: 50%; display: block; }
 .month-grid .day.sel .dots b { background: #fff !important; }
+
+.btn.wide { display: block; width: 100%; margin-top: 12px; padding: 14px; font-size: 15px; background: var(--card); color: var(--brand); box-shadow: inset 0 0 0 1.5px var(--brand-soft); }
+.btn.wide:hover { background: var(--brand-soft); }

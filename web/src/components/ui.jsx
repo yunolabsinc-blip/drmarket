@@ -60,14 +60,16 @@ export function StatusLine() {
 
 const TABS = [
   { id: 'home', path: '/', label: '홈', icon: HomeIcon },
-  { id: 'themes', path: '/themes', label: '테마', icon: GridIcon },
+  { id: 'calendar', path: '/market/calendar', label: '일정', icon: CalendarIcon },
   { id: 'rank', path: '/rank', label: '순위', icon: ChartIcon },
   { id: 'market', path: '/market', label: '시장', icon: GlobeIcon },
   { id: 'watch', path: '/watch', label: '관심', icon: StarIcon },
 ]
 
-export function TabBar({ page }) {
-  const active = page === 'theme' ? 'themes' : page
+export function TabBar({ page, param }) {
+  // 테마 화면들은 홈 소속, 시장 > 일정은 일정 탭
+  const active = page === 'market' && param === 'calendar' ? 'calendar'
+    : ['themes', 'theme'].includes(page) ? 'home' : page
   return (
     <nav className="tabbar" aria-label="주요 메뉴">
       {TABS.map((t) => (
@@ -156,6 +158,7 @@ const I = ({ children, size = 22 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"
     strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
 )
+export function CalendarIcon() { return <I><rect x="3" y="5" width="18" height="16" rx="2.5" /><path d="M3 10h18M8 3v4M16 3v4" /></I> }
 export function MenuIcon() { return <I><path d="M4 7h16M4 12h16M4 17h16" /></I> }
 export function GlobeIcon() { return <I><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></I> }
 export function SearchIcon() { return <I><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></I> }
