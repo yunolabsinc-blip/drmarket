@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import THEMES from '../data/themes.json'
 import { getBatchPrices, getHealth, getIndices } from './api'
 import { marketPhase } from './format'
+import { buildMatcher } from './stocks'
 
 const MarketContext = createContext(null)
 export const useMarket = () => useContext(MarketContext)
@@ -58,6 +59,8 @@ export function MarketProvider({ children }) {
       .then(setStockList)
       .catch(() => {})
   }, [])
+
+  const findStocks = useMemo(() => buildMatcher(stockList), [stockList])
 
   const stockMap = useMemo(() => {
     const m = {}
@@ -197,7 +200,7 @@ export function MarketProvider({ children }) {
   }, [refreshPrices])
 
   const value = {
-    prices, flash, indices, status, updatedAt, themes, stockMap, stockList,
+    prices, flash, indices, status, updatedAt, themes, stockMap, stockList, findStocks,
     favorites, toggleFavorite, memos, setMemo, watch,
     refresh: () => Promise.all([refreshPrices(), refreshIndices()]).catch(() => {}),
   }

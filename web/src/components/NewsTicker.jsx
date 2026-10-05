@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getHeadlines } from '../lib/api'
 import { go } from '../lib/router'
-import { timeAgo } from './NewsList'
+import { RelatedStocks, timeAgo } from './NewsList'
 import { CloseIcon } from './ui'
 
 // 하단 탭 위에 고정되는 주요 뉴스 띠: 5초마다 다음 기사, 3분마다 새로 조회.
@@ -58,6 +58,7 @@ export default function NewsTicker({ hidden }) {
             <h3>{sheet.title}</h3>
             <p className="sheet-meta">{sheet.source}{sheet.source && sheet.time ? ' · ' : ''}{timeAgo(sheet.time)}</p>
             <p className="sheet-desc">{sheet.desc || '이 기사는 요약이 제공되지 않습니다. 원문에서 확인해 주세요.'}</p>
+            <RelatedStocks text={`${sheet.title} ${sheet.desc || ''}`} onNavigate={() => setSheet(null)} />
             <div className="sheet-actions">
               <a className="btn" href={sheet.link} target="_blank" rel="noopener noreferrer">기사 원문 보기 ↗</a>
               <button className="btn ghost" onClick={() => { setSheet(null); go('/market/news') }}>뉴스 바로가기</button>

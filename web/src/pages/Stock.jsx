@@ -22,17 +22,48 @@ const INDEX_PERIODS = MAIN_PERIODS.slice(1)
 const loadPeriod = (key, fallback) => { try { return localStorage.getItem(key) || fallback } catch { return fallback } }
 const savePeriod = (key, v) => { try { localStorage.setItem(key, v) } catch {} }
 
+// 차트 데이터: 장중에는 분봉 10초, 일·주·월·년봉 60초마다 다시 받는다 (화면이 보일 때만)
 function useChart(fetcher, key, period) {
   const [state, setState] = useState({ candles: null, error: false })
   useEffect(() => {
     let alive = true
+    let timer
     setState({ candles: null, error: false })
-    fetcher(key, period)
-      .then((d) => alive && setState({ candles: d.candles || [], error: false }))
-      .catch(() => alive && setState({ candles: [], error: true }))
-    return () => { alive = false }
+    const intraday = String(period).endsWith('m')
+    const load = (first) => {
+      if (!first && document.visibilityState !== 'visible') return schedule()
+      fetcher(key, period)
+        .then((d) => alive && setState({ candles: d.candles || [], error: false }))
+        .catch(() => alive && first && setState({ candles: [], error: true }))
+        .finally(() => alive && schedule())
+    }
+    const schedule = () => {
+      const open = marketPhase().key === 'open'
+      timer = setTimeout(() => load(false), open ? (intraday ? 10000 : 60000) : 300000)
+    }
+    load(true)
+    return () => { alive = false; clearTimeout(timer) }
   }, [key, period])
   return state
+}
+
+// 5초 실시간 시세를 마지막 봉에 바로 반영 (다음 차트 조회 전까지 사이를 메움)
+function withLivePrice(candles, price, period) {
+  if (!candles?.length || !price) return candles
+  const last = candles[candles.length - 1]
+  if (!String(period).endsWith('m')) {
+    // 일봉 이상은 마지막 봉이 오늘(또는 이번 주·달·해)일 때만
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const same = period === 'D' ? last.t === today
+      : period === 'Y' ? last.t.slice(0, 4) === today.slice(0, 4)
+      : period === 'M' ? last.t.slice(0, 7) === today.slice(0, 7)
+      : (new Date(today) - new Date(last.t)) / 86400000 < 7
+    if (!same) return candles
+  }
+  if (last.c === price) return candles
+  const updated = { ...last, c: price, h: Math.max(last.h, price), l: Math.min(last.l, price) }
+  return [...candles.slice(0, -1), updated]
 }
 
 // value: '5m' | 'D' | 'W' | 'M' | 'Y'
@@ -155,8 +186,8 @@ export default function Stock({ code }) {
         {view === 'chart' ? (
           <div className="card chart-card">
             {chart.candles === null ? <div className="skeleton chart-skel" /> :
-              <Chart candles={chart.candles} baseline={intraday ? d?.prev_close : undefined}
-                initialCount={intraday ? 120 : 80} format={fmtPrice} />}
+              <Chart candles={withLivePrice(chart.candles, live?.price, period)} resetKey={`${code}:${period}`}
+                baseline={intraday ? d?.prev_close : undefined} initialCount={intraday ? 120 : 80} format={fmtPrice} />}
             <PeriodTabs periods={MAIN_PERIODS} value={period} onChange={setPeriod} />
           </div>
         ) : (
@@ -275,7 +306,7 @@ export function IndexPage({ code }) {
         </div>
         <div className="card chart-card">
           {chart.candles === null ? <div className="skeleton chart-skel" /> :
-            <Chart candles={chart.candles} format={fmtIndex} />}
+            <Chart candles={chart.candles} resetKey={`${code}:${period}`} format={fmtIndex} />}
           <PeriodTabs periods={INDEX_PERIODS} value={period} onChange={setPeriod} />
         </div>
         <Disclaimer />

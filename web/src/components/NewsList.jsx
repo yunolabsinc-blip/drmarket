@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getHeadlines, getMarketNews } from '../lib/api'
+import { useMarket } from '../lib/store'
+import { fmtRate, tone } from '../lib/format'
+import { go } from '../lib/router'
 import { Skeleton } from './ui'
 
 export const TOPICS = [
@@ -19,6 +22,27 @@ export function timeAgo(iso) {
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
+// 글에서 찾은 종목 버튼 (현재가 등락률 포함). 누르면 종목 화면으로
+export function RelatedStocks({ text, onNavigate }) {
+  const { findStocks, prices, watch } = useMarket()
+  const stocks = useMemo(() => findStocks(text), [findStocks, text])
+  useEffect(() => { stocks.forEach((s) => watch(s.code)) }, [stocks, watch])
+  if (!stocks.length) return null
+  return (
+    <div className="related">
+      <span className="related-label">관련 종목</span>
+      {stocks.map((s) => {
+        const p = prices[s.code]
+        return (
+          <button key={s.code} className="chip stock-chip" onClick={(e) => { e.stopPropagation(); onNavigate?.(); go(`/stock/${s.code}`) }}>
+            {s.name}{p && <em className={tone(p.change_rate)}>{fmtRate(p.change_rate)}</em>}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // 뉴스 한 건: 누르면 요약이 펼쳐지고, "기사 원문 보기"로 언론사 페이지로 이동
 export function NewsRow({ item, open, onToggle }) {
   return (
@@ -30,6 +54,7 @@ export function NewsRow({ item, open, onToggle }) {
       {open && (
         <div className="news-body">
           <p>{item.desc || '이 기사는 요약이 제공되지 않습니다. 원문에서 확인해 주세요.'}</p>
+          <RelatedStocks text={`${item.title} ${item.desc || ''}`} />
           <a className="btn sm" href={item.link} target="_blank" rel="noopener noreferrer">기사 원문 보기 ↗</a>
         </div>
       )}

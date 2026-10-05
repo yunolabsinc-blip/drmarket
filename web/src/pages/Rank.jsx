@@ -12,7 +12,7 @@ const TYPES = [
 ]
 
 export function useRanking(type) {
-  const { stockMap, stockList } = useMarket()
+  const { stockMap, stockList, prices, watch } = useMarket()
   const [raw, setRaw] = useState([])
   const [loading, setLoading] = useState(true)
   useEffect(() => {
@@ -28,7 +28,7 @@ export function useRanking(type) {
       } catch {}
       if (!stopped) {
         setLoading(false)
-        timer = setTimeout(load, !ok ? 6000 : marketPhase().key === 'open' ? 20000 : 120000)
+        timer = setTimeout(load, !ok ? 6000 : marketPhase().key === 'open' ? 10000 : 120000)
       }
     }
     setRaw([])
@@ -40,9 +40,15 @@ export function useRanking(type) {
     }
   }, [type])
   // ETF·ETN 등은 제외하고 주식만 (종목 목록이 로드된 뒤 적용)
-  const rows = stockList.length
+  const filtered = stockList.length
     ? raw.filter((r) => stockMap[r.code]).map((r) => ({ ...r, name: stockMap[r.code].name }))
     : raw
+  // 순위 종목을 5초 시세 조회에 포함시켜, 순서는 KRX 순위대로 두고 가격·등락률·거래대금은 통합 실시간으로
+  useEffect(() => { filtered.forEach((r) => watch(r.code)) }, [filtered.map((r) => r.code).join(','), watch])
+  const rows = filtered.map((r) => {
+    const p = prices[r.code]
+    return p ? { ...r, price: p.price, change_rate: p.change_rate, change: p.change, volume: p.volume || r.volume, trading_value: p.trading_value || r.trading_value } : r
+  })
   return { rows, loading }
 }
 

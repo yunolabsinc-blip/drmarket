@@ -12,7 +12,7 @@ const VOL_H = 46
 
 const fmtNum = (v) => (v >= 1e8 ? `${(v / 1e8).toFixed(1)}억` : v >= 1e4 ? `${Math.round(v / 1e4).toLocaleString()}만` : v.toLocaleString())
 
-export default function Chart({ candles, baseline, height = 300, format = (v) => v.toLocaleString(), initialCount = 80 }) {
+export default function Chart({ candles, baseline, height = 300, format = (v) => v.toLocaleString(), initialCount = 80, resetKey }) {
   const wrap = useRef(null)
   const [width, setWidth] = useState(340)
   const [view, setView] = useState({ count: initialCount, end: candles?.length || 0 })
@@ -108,11 +108,19 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
     }
   }, [len > 0])
 
-  // 데이터가 바뀌면 최신 구간으로
+  // 종목·기간이 바뀌면 최신 구간으로 초기화
   useEffect(() => {
     setView({ count: Math.min(initialCount, len) || len, end: len })
     setCross(null)
-  }, [candles, initialCount, len])
+  }, [resetKey, initialCount])
+  // 새 봉이 추가되면: 최신 봉을 보고 있었다면 따라가고, 과거를 보고 있었다면 그 자리를 유지
+  const prevLen = useRef(len)
+  useEffect(() => {
+    const before = prevLen.current
+    prevLen.current = len
+    if (!before) { setView({ count: Math.min(initialCount, len) || len, end: len }); return }
+    setView((v) => (v.end >= before ? { ...v, end: len } : v))
+  }, [len])
 
   // 이동평균 (전체 데이터 기준으로 계산해야 화면 왼쪽 끝도 정확)
   const mas = useMemo(() => {

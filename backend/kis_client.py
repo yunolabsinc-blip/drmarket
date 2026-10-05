@@ -881,7 +881,7 @@ def aggregate_minutes(rows: list[dict], n: int) -> list[dict]:
 async def fetch_minute_chart(code: str) -> list[dict]:
     """당일 1분봉. KIS는 1회 30개씩이라 30분 간격 구간을 동시에 조회해 이어 붙인다."""
     key = f"minute:{code}"
-    cached = _cache_get(key, 20)
+    cached = _cache_get(key, 5)
     if cached:
         return cached
     # 통합 시세는 넥스트레이드 프리마켓(08:00)부터 애프터마켓(20:00)까지
@@ -892,12 +892,18 @@ async def fetch_minute_chart(code: str) -> list[dict]:
         hour = day_end   # 장 시작 전에는 직전 거래일 마감까지
 
     # 각 조회의 끝 시각: 현재 → 30분씩 거슬러 올라가며 장 시작까지
+    # 10분 안에 하루치를 받아 둔 게 있으면 최근 30분 구간만 새로 받아 합친다 (갱신 비용 1회)
+    full_key = f"minute_full:{code}:{now.strftime('%Y%m%d')}"
+    base = _cache_get(full_key, 600)
     ends = []
     t = datetime.strptime(hour, "%H%M%S")
     start_t = datetime.strptime(day_start, "%H%M%S")
-    while t >= start_t:   # 장 시작 봉(08:00)까지 포함
-        ends.append(t.strftime("%H%M%S"))
-        t -= timedelta(minutes=30)
+    if base:
+        ends.append(hour)
+    else:
+        while t >= start_t:   # 장 시작 봉(08:00)까지 포함
+            ends.append(t.strftime("%H%M%S"))
+            t -= timedelta(minutes=30)
 
     async def window(end_hour: str):
         # 응답 지연으로 한 구간이 비면 차트에 구멍이 나므로 한 번 더 시도
@@ -913,7 +919,7 @@ async def fetch_minute_chart(code: str) -> list[dict]:
                 return out
         return []
 
-    seen: dict[str, dict] = {}
+    seen: dict[str, dict] = dict(base or {})
     for out in await asyncio.gather(*[window(e) for e in ends]):
         for o in out:
             h = o["stck_cntg_hour"]
@@ -928,6 +934,10 @@ async def fetch_minute_chart(code: str) -> list[dict]:
     rows = [seen[k] for k in sorted(seen)]
     if rows:
         _cache_set(key, rows)
+        if not base:
+            _cache_set(full_key, seen)
+        else:
+            _resp_cache[full_key] = (_resp_cache[full_key][0], seen)   # 저장 시각은 유지, 내용만 갱신
     return rows
 
 
