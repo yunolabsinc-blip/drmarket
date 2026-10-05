@@ -144,7 +144,7 @@ async def root():
   <hr>
   <h3>주요 엔드포인트</h3>
   <ul>
-    <li><span class="tag">GET</span><code>/api/market/indices</code> — 시장 지수 (코스피, 코스닥, 나스닥 등)</li>
+    <li><span class="tag">GET</span><code>/api/market/indices</code> — 시장 지수 (코스피, 코스닥)</li>
     <li><span class="tag">GET</span><code>/api/stock/{code}/price</code> — 종목 현재가</li>
     <li><span class="tag">GET</span><code>/api/stock/{code}/news</code> — 종목 관련 뉴스</li>
     <li><span class="tag">GET</span><code>/api/ranking/amount</code> — 거래대금 상위</li>
@@ -201,9 +201,40 @@ async def get_stock_price(code: str):
 
 @app.get("/api/stock/batch/prices", summary="복수 종목 현재가")
 async def get_batch_prices(codes: str = Query(..., description="쉼표 구분 종목코드, 예) 005930,000660,028300")):
-    """최대 100개 종목 동시 조회"""
-    code_list = list(dict.fromkeys(c.strip().lstrip("A") for c in codes.split(",") if c.strip()))[:100]
+    """최대 150개 종목 동시 조회"""
+    code_list = list(dict.fromkeys(c.strip().lstrip("A") for c in codes.split(",") if c.strip()))[:150]
     return {"stocks": await kis.fetch_batch_prices(code_list)}
+
+
+@app.get("/api/stock/{code}/detail", summary="종목 상세")
+async def get_stock_detail(code: str):
+    """현재가와 시가·고가·저가, 52주 고저, 시가총액, PER/PBR"""
+    d = await kis.fetch_stock_detail(code)
+    if not d:
+        raise HTTPException(503, "시세 조회 실패")
+    return d
+
+
+@app.get("/api/stock/{code}/orderbook", summary="호가")
+async def get_orderbook(code: str):
+    """10단계 매도·매수 호가와 잔량"""
+    d = await kis.fetch_orderbook(code)
+    if not d:
+        raise HTTPException(503, "호가 조회 실패")
+    return d
+
+
+@app.get("/api/stock/{code}/chart", summary="종목 차트")
+async def get_stock_chart(code: str, period: str = Query("D", description="1m(당일 분봉) / D / W / M")):
+    if period == "1m":
+        return {"period": period, "candles": await kis.fetch_minute_chart(code)}
+    return {"period": period, "candles": await kis.fetch_daily_chart(code, period)}
+
+
+@app.get("/api/index/{code}/chart", summary="지수 차트")
+async def get_index_chart(code: str, period: str = Query("D", description="D / W / M")):
+    """code: 0001=코스피, 1001=코스닥"""
+    return {"period": period, "candles": await kis.fetch_daily_chart(code, period, is_index=True)}
 
 
 # ──────────────────────────────────────────────
@@ -259,25 +290,6 @@ async def ranking_change(
     if direction not in ("up", "down"):
         raise HTTPException(400, "direction은 'up' 또는 'down'이어야 합니다.")
     return {"ranking": await kis.fetch_change_rank(direction)}
-
-
-@app.get("/api/ranking/views", summary="조회수 상위 (시뮬레이션)")
-async def ranking_views():
-    """
-    조회수 기준 인기 종목 (시뮬레이션).
-    실제 증권사 내부 데이터라 공개 API 미제공.
-    """
-    base = await kis.fetch_volume_rank("all", "amount")
-    # 조회수 = 거래대금 기반 가중 시뮬레이션
-    for item in base:
-        item["views"] = random.randint(
-            int(item["trading_value"] / 1_000_000),
-            int(item["trading_value"] / 500_000),
-        )
-    base.sort(key=lambda x: x["views"], reverse=True)
-    for i, r in enumerate(base):
-        r["rank"] = i + 1
-    return {"ranking": base}
 
 
 # ──────────────────────────────────────────────
@@ -344,6 +356,7 @@ async def token_status():
         "configured": kis._is_configured(),
         "has_token":  bool(cache["access_token"]),
         "expires_in": max(0, int(cache["expires_at"] - time.time())),
+        "shared_store": bool(kis._REDIS_URL),
         "last_errors": kis.last_errors,
     }
 

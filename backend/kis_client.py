@@ -149,20 +149,64 @@ def _is_configured() -> bool:
 # ──────────────────────────────────────────────
 # 인증
 # ──────────────────────────────────────────────
+# 서버리스에서는 인스턴스가 자주 새로 뜨므로, 공유 저장소(Upstash Redis)가 연결돼 있으면
+# 토큰을 거기에 보관해 모든 인스턴스가 같은 토큰을 쓴다. (Vercel Marketplace 연결 시 환경변수 자동 생성)
+_REDIS_URL = os.getenv("KV_REST_API_URL") or os.getenv("UPSTASH_REDIS_REST_URL") or ""
+_REDIS_TOKEN = os.getenv("KV_REST_API_TOKEN") or os.getenv("UPSTASH_REDIS_REST_TOKEN") or ""
+_REDIS_KEY = f"drmarket:kis_token:{KIS_MODE}"
+_TOKEN_RETRY_SEC = 20   # 발급 실패 후 재시도 대기 (KIS 토큰 발급은 1분당 1회 제한)
+
+
+async def _redis(*cmd: str):
+    if not (_REDIS_URL and _REDIS_TOKEN):
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            resp = await client.post(_REDIS_URL, json=list(cmd),
+                                     headers={"Authorization": f"Bearer {_REDIS_TOKEN}"})
+            return resp.json().get("result")
+    except Exception as e:
+        logger.warning("[REDIS] %s 실패: %s", cmd[0], e)
+        return None
+
+
+def _token_valid() -> bool:
+    return bool(_token_cache["access_token"]) and time.time() < _token_cache["expires_at"] - 300
+
+
 async def get_access_token() -> str | None:
-    """액세스 토큰 발급/캐시 반환"""
-    if _token_cache["access_token"] and time.time() < _token_cache["expires_at"] - 300:
+    """액세스 토큰: 메모리 → 공유 저장소 → 신규 발급 순으로 확보"""
+    if _token_valid():
         return _token_cache["access_token"]
 
     if not _is_configured():
         logger.warning("[KIS] API 키 미설정 — 시뮬레이션 모드")
         return None
 
-    # 동시 요청이 각자 토큰을 발급받지 않도록 직렬화 (KIS 토큰 발급은 1분당 1회 제한)
+    # 동시 요청이 각자 토큰을 발급받지 않도록 직렬화
     async with _token_lock:
-        if _token_cache["access_token"] and time.time() < _token_cache["expires_at"] - 300:
+        if _token_valid():
             return _token_cache["access_token"]
-        return await _issue_token()
+        shared = await _redis("GET", _REDIS_KEY)
+        if shared:
+            try:
+                item = json.loads(shared)
+                if time.time() < item["expires_at"] - 300:
+                    _token_cache.update(access_token=item["token"], expires_at=item["expires_at"])
+                    return item["token"]
+            except Exception:
+                pass
+        # 최근 발급 실패 직후면 바로 포기 (요청마다 재시도하며 지연되는 것 방지)
+        if time.time() < _token_cache.get("retry_at", 0):
+            return None
+        token = await _issue_token()
+        if token:
+            ttl = max(60, int(_token_cache["expires_at"] - time.time()))
+            await _redis("SET", _REDIS_KEY,
+                         json.dumps({"token": token, "expires_at": _token_cache["expires_at"]}), "EX", str(ttl))
+        else:
+            _token_cache["retry_at"] = time.time() + _TOKEN_RETRY_SEC
+        return token
 
 
 async def _issue_token() -> str | None:
@@ -177,13 +221,17 @@ async def _issue_token() -> str | None:
                     "appsecret": APP_SECRET,
                 },
             )
-            resp.raise_for_status()
             data = resp.json()
+            if "access_token" not in data:
+                last_errors["tokenP"] = f"{data.get('error_code', resp.status_code)} {data.get('error_description', '')}"
+                logger.error("[KIS] 토큰 발급 실패: %s", last_errors["tokenP"])
+                return None
             _token_cache["access_token"] = data["access_token"]
             _token_cache["expires_at"] = now + data.get("expires_in", 86400)
             logger.info("[KIS] 토큰 발급 성공 (%s 모드)", KIS_MODE)
             return _token_cache["access_token"]
     except Exception as e:
+        last_errors["tokenP"] = f"{type(e).__name__}: {str(e)[:120]}"
         logger.error("[KIS] 토큰 발급 실패: %s", e)
         return None
 
@@ -287,13 +335,6 @@ async def fetch_market_indices() -> list[dict]:
             rate = round(float(o.get("bstp_nmix_prdy_ctrt", 0)), 2)
             results.append({"name": name, "value": cur, "change": chg, "changeRate": rate, "flag": flag, "source": "live"})
 
-    # 해외 지수는 시뮬레이션 (KIS API 미지원)
-    results += [
-        {"name": "코스피야간", "value": round(357.85 + random.uniform(-2, 2), 2), "change": round(random.uniform(-3, 3), 2), "changeRate": round(random.uniform(-0.5, 0.5), 2), "flag": "🌙"},
-        {"name": "나스닥선물", "value": round(19842.5 + random.uniform(-100, 100), 2), "change": round(random.uniform(-80, 80), 2), "changeRate": round(random.uniform(-0.5, 0.5), 2), "flag": "🇺🇸"},
-        {"name": "나스닥",    "value": round(19432.1 + random.uniform(-100, 100), 2), "change": round(random.uniform(-80, 80), 2), "changeRate": round(random.uniform(-0.5, 0.5), 2), "flag": "🇺🇸"},
-        {"name": "다우",      "value": round(42315.6 + random.uniform(-200, 200), 2), "change": round(random.uniform(-200, 200), 2), "changeRate": round(random.uniform(-0.5, 0.5), 2), "flag": "🇺🇸"},
-    ]
     if any(r.get("source") == "live" for r in results):
         _cache_set("indices", results)
     return results
@@ -580,7 +621,7 @@ async def fetch_stock_news(stock_name: str, count: int = 5) -> list[dict]:
     client_secret = os.getenv("NAVER_CLIENT_SECRET", "")
 
     if not (client_id and client_secret):
-        return _mock_news(stock_name)
+        return []
 
     try:
         async with httpx.AsyncClient(timeout=8) as client:
@@ -595,6 +636,7 @@ async def fetch_stock_news(stock_name: str, count: int = 5) -> list[dict]:
                 {
                     "title":   _strip_html(item.get("title", "")),
                     "source":  item.get("originallink", ""),
+                    "link":    item.get("link", "") or item.get("originallink", ""),
                     "time":    item.get("pubDate", ""),
                     "tag":     "뉴스",
                 }
@@ -602,7 +644,7 @@ async def fetch_stock_news(stock_name: str, count: int = 5) -> list[dict]:
             ]
     except Exception as e:
         logger.warning("[NAVER] 뉴스 조회 실패: %s", e)
-        return _mock_news(stock_name)
+        return []
 
 
 def _strip_html(text: str) -> str:
@@ -700,3 +742,167 @@ async def realtime_price_stream(codes: list[str]):
         except Exception as e:
             logger.error("[WS] 연결 오류: %s — 5초 후 재연결", e)
             await asyncio.sleep(5)
+
+
+# ──────────────────────────────────────────────
+# 종목 상세 · 차트 (실데이터)
+# ──────────────────────────────────────────────
+def _num(v, cast=float):
+    try:
+        return cast(float(v))
+    except (TypeError, ValueError):
+        return cast(0)
+
+
+async def fetch_stock_detail(code: str) -> dict | None:
+    """현재가 + 시가/고가/저가, 52주 고저, 시가총액, PER/PBR 등"""
+    cached = _cache_get(f"detail:{code}", 5)
+    if cached:
+        return cached
+    data = await _get(
+        "/uapi/domestic-stock/v1/quotations/inquire-price",
+        {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+        "FHKST01010100",
+    )
+    if not data or not data.get("output"):
+        return None
+    o = data["output"]
+    result = {
+        "code": code,
+        "source": "live",
+        "price": _num(o.get("stck_prpr"), int),
+        "change": _num(o.get("prdy_vrss"), int),
+        "change_rate": _num(o.get("prdy_ctrt")),
+        "open": _num(o.get("stck_oprc"), int),
+        "high": _num(o.get("stck_hgpr"), int),
+        "low": _num(o.get("stck_lwpr"), int),
+        "prev_close": _num(o.get("stck_sdpr"), int),
+        "upper_limit": _num(o.get("stck_mxpr"), int),
+        "lower_limit": _num(o.get("stck_llam"), int),
+        "volume": _num(o.get("acml_vol"), int),
+        "trading_value": _num(o.get("acml_tr_pbmn"), int),
+        "market_cap": _num(o.get("hts_avls"), int) * 100_000_000,   # 억원 → 원
+        "per": _num(o.get("per")),
+        "pbr": _num(o.get("pbr")),
+        "eps": _num(o.get("eps")),
+        "w52_high": _num(o.get("w52_hgpr"), int),
+        "w52_low": _num(o.get("w52_lwpr"), int),
+        "foreign_ratio": _num(o.get("hts_frgn_ehrt")),
+        "sector": o.get("bstp_kor_isnm", ""),
+    }
+    _cache_set(f"detail:{code}", result)
+    return result
+
+
+async def fetch_daily_chart(code: str, period: str = "D", is_index: bool = False) -> list[dict]:
+    """일/주/월봉 (최대 100개). is_index=True 면 업종지수(0001=코스피, 1001=코스닥)"""
+    period = period if period in ("D", "W", "M") else "D"
+    key = f"chart:{'U' if is_index else 'J'}:{code}:{period}"
+    cached = _cache_get(key, 60)
+    if cached:
+        return cached
+    end = datetime.now()
+    span = {"D": 160, "W": 800, "M": 3300}[period]
+    start = end - timedelta(days=span)
+    params = {
+        "FID_COND_MRKT_DIV_CODE": "U" if is_index else "J",
+        "FID_INPUT_ISCD": code,
+        "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
+        "FID_INPUT_DATE_2": end.strftime("%Y%m%d"),
+        "FID_PERIOD_DIV_CODE": period,
+    }
+    if is_index:
+        path, tr = "/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice", "FHKUP03500100"
+        f = ("bstp_nmix_oprc", "bstp_nmix_hgpr", "bstp_nmix_lwpr", "bstp_nmix_prpr")
+    else:
+        params["FID_ORG_ADJ_PRC"] = "0"
+        path, tr = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice", "FHKST03010100"
+        f = ("stck_oprc", "stck_hgpr", "stck_lwpr", "stck_clpr")
+    data = await _get(path, params, tr)
+    rows = []
+    for o in (data or {}).get("output2", []) or []:
+        d = o.get("stck_bsop_date")
+        if not d:
+            continue
+        rows.append({
+            "t": f"{d[:4]}-{d[4:6]}-{d[6:]}",
+            "o": _num(o.get(f[0])), "h": _num(o.get(f[1])),
+            "l": _num(o.get(f[2])), "c": _num(o.get(f[3])),
+            "v": _num(o.get("acml_vol"), int),
+        })
+    rows.reverse()   # 오래된 → 최신
+    if rows:
+        _cache_set(key, rows)
+    return rows
+
+
+async def fetch_minute_chart(code: str) -> list[dict]:
+    """당일 1분봉 (09:00~현재). KIS는 1회 30개씩이라 거꾸로 이어 붙인다."""
+    key = f"minute:{code}"
+    cached = _cache_get(key, 20)
+    if cached:
+        return cached
+    now = datetime.utcnow() + timedelta(hours=9)
+    hour = min(now.strftime("%H%M%S"), "153000")
+    if hour < "090000":
+        hour = "153000"   # 장 시작 전에는 직전 거래일 마감까지
+    seen: dict[str, dict] = {}
+    for _ in range(14):
+        data = await _get(
+            "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
+            {"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code,
+             "FID_INPUT_HOUR_1": hour, "FID_PW_DATA_INCU_YN": "N"},
+            "FHKST03010200",
+        )
+        out = (data or {}).get("output2", []) or []
+        out = [o for o in out if o.get("stck_cntg_hour")]
+        if not out:
+            break
+        for o in out:
+            h = o["stck_cntg_hour"]
+            seen[h] = {
+                "t": f"{h[:2]}:{h[2:4]}",
+                "o": _num(o.get("stck_oprc")), "h": _num(o.get("stck_hgpr")),
+                "l": _num(o.get("stck_lwpr")), "c": _num(o.get("stck_prpr")),
+                "v": _num(o.get("cntg_vol"), int),
+            }
+        earliest = min(o["stck_cntg_hour"] for o in out)
+        if earliest <= "090000":
+            break
+        # 가장 이른 봉 1분 전부터 다시 조회
+        t = datetime.strptime(earliest, "%H%M%S") - timedelta(minutes=1)
+        hour = t.strftime("%H%M%S")
+    rows = [seen[k] for k in sorted(seen)]
+    if rows:
+        _cache_set(key, rows)
+    return rows
+
+
+async def fetch_orderbook(code: str) -> dict | None:
+    """10단계 매도·매수 호가와 잔량"""
+    cached = _cache_get(f"book:{code}", 2)
+    if cached:
+        return cached
+    data = await _get(
+        "/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn",
+        {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+        "FHKST01010200",
+    )
+    o = (data or {}).get("output1")
+    if not o:
+        return None
+    asks = [{"price": _num(o.get(f"askp{i}"), int), "qty": _num(o.get(f"askp_rsqn{i}"), int)} for i in range(1, 11)]
+    bids = [{"price": _num(o.get(f"bidp{i}"), int), "qty": _num(o.get(f"bidp_rsqn{i}"), int)} for i in range(1, 11)]
+    exp = (data or {}).get("output2") or {}
+    result = {
+        "code": code,
+        "source": "live",
+        "time": o.get("aspr_acpt_hour", ""),
+        "asks": [a for a in asks if a["price"] > 0],   # 1호가(가장 낮은 매도)부터
+        "bids": [b for b in bids if b["price"] > 0],   # 1호가(가장 높은 매수)부터
+        "total_ask": _num(o.get("total_askp_rsqn"), int),
+        "total_bid": _num(o.get("total_bidp_rsqn"), int),
+        "expected_price": _num(exp.get("antc_cnpr"), int),
+    }
+    _cache_set(f"book:{code}", result)
+    return result

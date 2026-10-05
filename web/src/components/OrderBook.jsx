@@ -1,0 +1,61 @@
+import { useEffect, useState } from 'react'
+import { getOrderbook } from '../lib/api'
+import { fmtPrice, fmtRate, marketPhase, tone } from '../lib/format'
+
+// 10단계 호가: 위쪽 매도(파랑), 아래쪽 매수(빨강), 잔량 막대
+export default function OrderBook({ code, prevClose }) {
+  const [book, setBook] = useState(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    let timer
+    const load = () =>
+      getOrderbook(code)
+        .then((d) => { if (alive) { setBook(d); setFailed(false) } })
+        .catch(() => alive && setFailed(true))
+        .finally(() => { if (alive) timer = setTimeout(load, marketPhase().key === 'open' ? 3000 : 30000) })
+    load()
+    return () => { alive = false; clearTimeout(timer) }
+  }, [code])
+
+  if (!book) {
+    return failed
+      ? <div className="chart-empty" style={{ height: 220 }}>호가를 불러오지 못했습니다</div>
+      : <div className="skeleton chart-skel" />
+  }
+
+  const max = Math.max(1, ...book.asks.map((a) => a.qty), ...book.bids.map((b) => b.qty))
+  const rate = (p) => (prevClose ? ((p - prevClose) / prevClose) * 100 : null)
+  const asks = [...book.asks].reverse()   // 높은 가격이 위로
+  const t = book.time
+  const time = t && t.length === 6 ? `${t.slice(0, 2)}:${t.slice(2, 4)}:${t.slice(4)}` : ''
+
+  const Row = ({ side, level }) => (
+    <div className={`ob-row ob-${side}`}>
+      <span className="ob-qty ob-left">
+        {side === 'ask' && <><i style={{ width: `${(level.qty / max) * 100}%` }} /><em>{level.qty.toLocaleString()}</em></>}
+      </span>
+      <span className={`ob-price ${tone(level.price - prevClose)}`}>
+        <b>{fmtPrice(level.price)}</b>
+        <small>{fmtRate(rate(level.price))}</small>
+      </span>
+      <span className="ob-qty ob-right">
+        {side === 'bid' && <><i style={{ width: `${(level.qty / max) * 100}%` }} /><em>{level.qty.toLocaleString()}</em></>}
+      </span>
+    </div>
+  )
+
+  return (
+    <div className="orderbook">
+      <div className="ob-head"><span>매도 잔량</span><span>호가</span><span>매수 잔량</span></div>
+      {asks.map((a) => <Row key={`a${a.price}`} side="ask" level={a} />)}
+      {book.bids.map((b) => <Row key={`b${b.price}`} side="bid" level={b} />)}
+      <div className="ob-foot">
+        <span className="down">{book.total_ask.toLocaleString()}</span>
+        <span className="muted">총 잔량{time ? ` · ${time}` : ''}</span>
+        <span className="up">{book.total_bid.toLocaleString()}</span>
+      </div>
+    </div>
+  )
+}
