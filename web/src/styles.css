@@ -314,3 +314,60 @@ b { font-weight: 650; }
 .ts-bar i.up { background: var(--up); opacity: .75; }
 .ts-bar i.down { background: var(--down); opacity: .75; }
 @media (max-width: 340px) { .tile-grid { grid-template-columns: 1fr; } }
+
+/* ───────── 상단 검색창 · 메뉴 ───────── */
+.topbar.main { gap: 10px; padding: 0 6px 0 14px; height: 60px; }
+.topbar-logo { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.wide-only { display: none; }
+.search-trigger {
+  flex: 1; min-width: 0; height: 42px; display: flex; align-items: center; gap: 8px;
+  padding: 0 14px; border-radius: 12px; background: var(--card); color: var(--text-3);
+  font-size: 14.5px; box-shadow: inset 0 0 0 1px var(--line);
+}
+.search-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-trigger:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
+@media (min-width: 480px) { .wide-only { display: inline; } }
+
+.menu-layer { position: fixed; inset: 0; z-index: 60; background: rgba(17, 24, 39, 0.35); animation: fade .15s ease-out; }
+.menu-panel {
+  position: absolute; top: 0; right: max(0px, calc((100vw - 560px) / 2)); bottom: 0;
+  width: min(300px, 82vw); background: var(--card); display: flex; flex-direction: column;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08); animation: slidein .18s ease-out;
+}
+@keyframes slidein { from { transform: translateX(24px); opacity: 0; } }
+.menu-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 8px 10px 18px; border-bottom: 1px solid var(--line); }
+.menu-links { display: flex; flex-direction: column; padding: 8px 0; }
+.menu-links a { padding: 14px 20px; font-size: 16px; font-weight: 600; }
+.menu-links a:hover { background: #fafbfc; }
+.menu-info { margin-top: auto; padding: 18px 20px 28px; font-size: 12.5px; color: var(--text-3); line-height: 1.6; display: flex; flex-direction: column; gap: 6px; }
+.menu-info b { color: var(--text-2); font-size: 13px; }
+
+/* ───────── 시장종합 ───────── */
+.board-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.board-card {
+  background: var(--card); border-radius: var(--radius); padding: 14px 14px 12px; min-width: 0;
+  display: grid; grid-template-columns: 1fr auto; row-gap: 2px; text-align: left;
+}
+.board-card:disabled { cursor: default; }
+.board-name { font-size: 13px; color: var(--text-2); font-weight: 600; display: flex; flex-direction: column; }
+.board-name small { font-size: 11px; color: var(--text-3); font-weight: 500; }
+.board-value { grid-column: 1 / -1; font-size: 18px; font-weight: 750; letter-spacing: -0.02em; }
+.board-change { grid-column: 1 / -1; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.board-spark { grid-row: 1; grid-column: 2; }
+.flow, .sectors { padding: 14px 18px; }
+.flow-date { font-size: 12.5px; color: var(--text-3); margin-bottom: 6px; }
+.flow-row, .sector-row { display: grid; grid-template-columns: 74px 1fr 84px; align-items: center; gap: 10px; height: 36px; }
+.sector-row { height: 32px; }
+.flow-label, .sector-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flow-track { position: relative; height: 10px; border-radius: 5px; background: #f2f3f5; }
+.flow-track::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line-strong); }
+.flow-bar { position: absolute; top: 0; bottom: 0; border-radius: 5px; background: var(--text-3); }
+.flow-bar.up { background: var(--up); }
+.flow-bar.down { background: var(--down); }
+.flow-value, .sector-rate { text-align: right; font-size: 14px; font-weight: 650; white-space: nowrap; }
+.flow-table { width: 100%; margin-top: 14px; border-collapse: collapse; font-size: 12.5px; }
+.flow-table th { color: var(--text-3); font-weight: 600; text-align: right; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.flow-table td { text-align: right; padding: 7px 0; border-bottom: 1px solid var(--line); font-weight: 550; }
+.flow-table th:first-child, .flow-table td:first-child { text-align: left; color: var(--text-2); }
+.flow-table tr:last-child td { border-bottom: 0; }
+.tabbar .tab { font-size: 10.5px; }

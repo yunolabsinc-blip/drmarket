@@ -2,15 +2,17 @@ import { useEffect } from 'react'
 import { useMarket } from '../lib/store'
 import { fmtPrice, fmtRate, fmtTime, marketPhase, tone } from '../lib/format'
 import { back, go } from '../lib/router'
-import Logo from './Logo'
+import { LogoMark } from './Logo'
 
-export function TopBar({ onSearch }) {
+export function TopBar({ onSearch, onMenu }) {
   return (
-    <header className="topbar">
-      <a href="#/" className="topbar-logo" aria-label="닥터마켓 홈"><Logo size={26} /></a>
-      <button className="icon-btn" onClick={onSearch} aria-label="종목 검색">
+    <header className="topbar main">
+      <a href="#/" className="topbar-logo" aria-label="닥터마켓 홈"><LogoMark size={30} /><span className="logo-text wide-only">닥터마켓</span></a>
+      <button className="search-trigger" onClick={onSearch} aria-label="종목·테마 검색">
         <SearchIcon />
+        <span>종목명, 종목코드, 테마 검색</span>
       </button>
+      <button className="icon-btn" onClick={onMenu} aria-label="메뉴"><MenuIcon /></button>
     </header>
   )
 }
@@ -60,6 +62,7 @@ const TABS = [
   { id: 'home', path: '/', label: '홈', icon: HomeIcon },
   { id: 'themes', path: '/themes', label: '테마', icon: GridIcon },
   { id: 'rank', path: '/rank', label: '순위', icon: ChartIcon },
+  { id: 'market', path: '/market', label: '시장', icon: GlobeIcon },
   { id: 'watch', path: '/watch', label: '관심', icon: StarIcon },
 ]
 
@@ -153,6 +156,8 @@ const I = ({ children, size = 22 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"
     strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
 )
+export function MenuIcon() { return <I><path d="M4 7h16M4 12h16M4 17h16" /></I> }
+export function GlobeIcon() { return <I><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></I> }
 export function SearchIcon() { return <I><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></I> }
 export function BackIcon() { return <I><path d="m15 18-6-6 6-6" /></I> }
 export function ChevronIcon() { return <I size={16}><path d="m9 18 6-6-6-6" /></I> }

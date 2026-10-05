@@ -908,3 +908,102 @@ async def fetch_orderbook(code: str) -> dict | None:
     }
     _cache_set(f"book:{code}", result)
     return result
+
+
+# ──────────────────────────────────────────────
+# 시장종합: 투자자별 순매수 · 업종별 등락 · 해외 지수
+# ──────────────────────────────────────────────
+async def fetch_investor_flow(market: str = "kospi") -> dict | None:
+    """시장별 투자자 순매수 대금(원). 최근 거래일 + 직전 5거래일 추이"""
+    key = f"investor:{market}"
+    cached = _cache_get(key, 30)
+    if cached:
+        return cached
+    iscd, cls = ("0001", "KSP") if market == "kospi" else ("1001", "KSQ")
+    today = (datetime.utcnow() + timedelta(hours=9)).strftime("%Y%m%d")
+    data = await _get(
+        "/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-market",
+        {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": iscd, "FID_INPUT_DATE_1": today,
+         "FID_INPUT_ISCD_1": cls, "FID_INPUT_DATE_2": today, "FID_INPUT_ISCD_2": iscd},
+        "FHPTJ04040000",
+    )
+    rows = (data or {}).get("output") or []
+    if not rows:
+        return None
+    won = lambda v: _num(v, int) * 1_000_000   # 백만원 → 원
+    days = [{
+        "date": r.get("stck_bsop_date", ""),
+        "foreign": won(r.get("frgn_ntby_tr_pbmn")),
+        "institution": won(r.get("orgn_ntby_tr_pbmn")),
+        "individual": won(r.get("prsn_ntby_tr_pbmn")),
+    } for r in rows[:5]]
+    result = {"market": market, "source": "live", **days[0], "history": days}
+    _cache_set(key, result)
+    return result
+
+
+# 업종지수 중 산업 분류만 (종합·규모별·제조 등 집계 지수 제외)
+_SECTOR_CODES = {f"{n:04d}" for n in range(5, 31)} - {"0027"}
+
+
+async def fetch_sectors() -> list[dict]:
+    """코스피 업종별 등락률·거래대금"""
+    cached = _cache_get("sectors", 30)
+    if cached:
+        return cached
+    data = await _get(
+        "/uapi/domestic-stock/v1/quotations/inquire-index-category-price",
+        {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": "0001", "FID_COND_SCR_DIV_CODE": "20214",
+         "FID_MRKT_CLS_CODE": "K", "FID_BLNG_CLS_CODE": "0"},
+        "FHPUP02140000",
+    )
+    rows = []
+    for o in (data or {}).get("output2", []) or []:
+        if o.get("bstp_cls_code") not in _SECTOR_CODES:
+            continue
+        rows.append({
+            "code": o["bstp_cls_code"],
+            "name": o.get("hts_kor_isnm", ""),
+            "value": _num(o.get("bstp_nmix_prpr")),
+            "change_rate": _num(o.get("bstp_nmix_prdy_ctrt")),
+            "trading_value": _num(o.get("acml_tr_pbmn"), int) * 1_000_000,
+        })
+    rows.sort(key=lambda r: r["change_rate"], reverse=True)
+    if rows:
+        _cache_set("sectors", rows)
+    return rows
+
+
+_GLOBAL_INDICES = [("COMP", "나스닥"), ("SPX", "S&P 500"), (".DJI", "다우존스"), ("NDX", "나스닥 100")]
+
+
+async def fetch_global_indices() -> list[dict]:
+    """미국 주요 지수 (최근 종가 기준)"""
+    cached = _cache_get("global", 120)
+    if cached:
+        return cached
+    end = datetime.utcnow()
+    start = end - timedelta(days=20)
+    results = []
+    for code, name in _GLOBAL_INDICES:
+        data = await _get(
+            "/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
+            {"FID_COND_MRKT_DIV_CODE": "N", "FID_INPUT_ISCD": code, "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
+             "FID_INPUT_DATE_2": end.strftime("%Y%m%d"), "FID_PERIOD_DIV_CODE": "D"},
+            "FHKST03030100",
+        )
+        days = [d for d in (data or {}).get("output2", []) or [] if _num(d.get("ovrs_nmix_prpr")) > 0]
+        if len(days) < 2:
+            continue
+        cur, prev = _num(days[0]["ovrs_nmix_prpr"]), _num(days[1]["ovrs_nmix_prpr"])
+        d = days[0]["stck_bsop_date"]
+        results.append({
+            "code": code, "name": name, "source": "live",
+            "value": cur, "change": round(cur - prev, 2),
+            "changeRate": round((cur - prev) / prev * 100, 2) if prev else 0,
+            "date": f"{d[4:6]}/{d[6:]}",
+            "spark": [_num(x["ovrs_nmix_prpr"]) for x in reversed(days[:10])],
+        })
+    if results:
+        _cache_set("global", results)
+    return results

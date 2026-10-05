@@ -19,6 +19,7 @@ export const getBatchPrices = (codes) => api(`/api/stock/batch/prices?codes=${co
 export const getRanking = (type) =>
   api(type === 'down' ? '/api/ranking/change?direction=down' : `/api/ranking/${type === 'up' ? 'change' : type}`)
 export const getOrderbook = (code) => api(`/api/stock/${code}/orderbook`, { timeout: 10000 })
+export const getMarketOverview = () => api('/api/market/overview', { timeout: 30000 })
 export const getDetail = (code) => api(`/api/stock/${code}/detail`)
 export const getStockChart = (code, period) => api(`/api/stock/${code}/chart?period=${period}`, { timeout: 30000 })
 export const getIndexChart = (code, period) => api(`/api/index/${code}/chart?period=${period}`)
