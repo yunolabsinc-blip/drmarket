@@ -7,10 +7,10 @@ import { LogoMark } from './Logo'
 export function TopBar({ onSearch, onMenu }) {
   return (
     <header className="topbar main">
-      <a href="#/" className="topbar-logo" aria-label="닥터마켓 홈"><LogoMark size={30} /><span className="logo-text wide-only">닥터마켓</span></a>
+      <a href="#/" className="topbar-logo" aria-label="닥터마켓 홈"><LogoMark size={28} /><span className="logo-text topbar-word">닥터마켓</span></a>
       <button className="search-trigger" onClick={onSearch} aria-label="종목·테마 검색">
         <SearchIcon />
-        <span>종목명, 종목코드, 테마 검색</span>
+        <span className="st-long">종목명, 종목코드, 테마 검색</span><span className="st-short">종목·테마 검색</span>
       </button>
       <button className="icon-btn" onClick={onMenu} aria-label="메뉴"><MenuIcon /></button>
     </header>
