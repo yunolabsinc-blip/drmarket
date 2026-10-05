@@ -61,6 +61,8 @@ async def _google_rss(query: str, when: str = "") -> list[dict]:
             title = title[: -len(source) - 3]
         else:
             title = re.sub(r"\s+-\s+[^-]{1,30}$", "", title)
+        # 언론사가 제목에 자기 이름을 한 번 더 붙인 경우 ("… - 조선비즈 - Chosunbiz"): 띄어쓰기 없는 짧은 꼬리만 제거
+        title = re.sub(r"\s+-\s+\S{2,8}$", "", title)
         try:
             dt = parsedate_to_datetime(it.findtext("pubDate") or "")
         except Exception:
