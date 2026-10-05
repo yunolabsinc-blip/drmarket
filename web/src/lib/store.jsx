@@ -170,15 +170,17 @@ export function MarketProvider({ children }) {
           .sort((a, b) => (b.change_rate ?? -999) - (a.change_rate ?? -999))
         const live = stocks.filter((s) => s.price)
         const avg = live.length ? live.reduce((sum, s) => sum + s.change_rate, 0) / live.length : null
+        const value = live.reduce((sum, s) => sum + (s.trading_value || 0), 0)   // 테마 당일 거래대금 합
         return {
           ...t,
           stocks,
           avg,
+          value,
           up: live.filter((s) => s.change_rate > 0).length,
           down: live.filter((s) => s.change_rate < 0).length,
           leader: live[0] || null,
         }
-      }).sort((a, b) => (b.avg ?? -999) - (a.avg ?? -999)),
+      }),
     [prices, stockMap],
   )
 

@@ -274,3 +274,43 @@ b { font-weight: 650; }
 .ob-left i { right: 0; background: var(--down); }
 .ob-right i { left: 0; background: var(--up); }
 .ob-qty em { position: relative; font-style: normal; color: var(--text-2); font-size: 12.5px; }
+
+/* ───────── 실시간 테마 타일 (2열) ───────── */
+.sort-toggle { display: inline-flex; gap: 6px; margin-bottom: 12px; }
+.sort-toggle button {
+  padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  color: var(--text-2); background: #e9ebee;
+}
+.sort-toggle button.on { background: var(--text); color: #fff; }
+.tile-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.tile {
+  background: var(--card); border-radius: var(--radius); padding: 14px 12px 8px;
+  display: flex; flex-direction: column; min-width: 0; cursor: pointer;
+  transition: box-shadow .15s, transform .12s;
+}
+.tile:hover { box-shadow: 0 4px 16px rgba(17, 24, 39, 0.06); }
+.tile:active { transform: scale(0.99); }
+.tile-skel { height: 236px; padding: 0; }
+.tile-head { display: flex; align-items: center; gap: 6px; padding: 0 2px; }
+.tile-rank {
+  flex: none; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center;
+  background: var(--brand-soft); color: var(--brand); font-size: 12px; font-weight: 750;
+}
+.tile-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-rate { flex: none; font-size: 13.5px; font-weight: 700; }
+.tile-value { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; white-space: nowrap; padding: 4px 2px 8px; font-size: 11.5px; color: var(--text-3); border-bottom: 1px solid var(--line); }
+.tile-value b { color: var(--text); font-weight: 650; font-size: 12.5px; }
+.tile-share { font-weight: 600; }
+.tile-stocks { list-style: none; }
+.tile-stock { width: 100%; display: flex; flex-direction: column; gap: 1px; padding: 7px 2px; border-radius: 8px; }
+.tile-stock:hover { background: #fafbfc; }
+.ts-top, .ts-bottom { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.ts-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ts-rate { flex: none; font-size: 12.5px; font-weight: 650; }
+.ts-price { font-size: 13px; font-weight: 650; border-radius: 4px; transition: background .5s; }
+.ts-value { font-size: 11px; color: var(--text-3); }
+.ts-bar { display: block; height: 3px; border-radius: 2px; background: #f0f1f3; overflow: hidden; margin-top: 3px; }
+.ts-bar i { display: block; height: 100%; border-radius: 2px; background: var(--text-3); }
+.ts-bar i.up { background: var(--up); opacity: .75; }
+.ts-bar i.down { background: var(--down); opacity: .75; }
+@media (max-width: 340px) { .tile-grid { grid-template-columns: 1fr; } }

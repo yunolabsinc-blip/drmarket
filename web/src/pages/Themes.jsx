@@ -1,50 +1,21 @@
+import { useState } from 'react'
 import { useMarket } from '../lib/store'
-import { go } from '../lib/router'
-import { Disclaimer, Empty, Rate, RatePill, Skeleton, StatusLine, StockRow, SubBar } from '../components/ui'
-
-function Breadth({ up, down, total }) {
-  const flat = Math.max(0, total - up - down)
-  return (
-    <span className="breadth" aria-label={`상승 ${up}, 하락 ${down}`}>
-      <i className="b-up" style={{ flex: up }} />
-      <i className="b-flat" style={{ flex: flat }} />
-      <i className="b-down" style={{ flex: down }} />
-    </span>
-  )
-}
+import ThemeGrid, { SortToggle } from '../components/ThemeGrid'
+import { fmtWonShort } from '../lib/format'
+import { Disclaimer, Empty, RatePill, StatusLine, StockRow, SubBar } from '../components/ui'
 
 export default function Themes() {
-  const { themes } = useMarket()
-  const ready = themes.some((t) => t.avg !== null)
+  const [sort, setSort] = useState(() => { try { return localStorage.getItem('drm.themeSort') || 'value' } catch { return 'value' } })
+  const changeSort = (v) => { setSort(v); try { localStorage.setItem('drm.themeSort', v) } catch {} }
   return (
     <main className="page">
-      <h1 className="page-title">테마</h1>
-      <p className="page-desc">테마 소속 종목의 평균 등락률 순으로 정렬됩니다.</p>
+      <h1 className="page-title">실시간 테마</h1>
+      <p className="page-desc">{sort === 'value'
+        ? '테마 소속 종목의 당일 거래대금 합계 순입니다. 돈이 몰리는 테마가 위에 옵니다.'
+        : '테마 소속 종목의 평균 등락률 순입니다.'}</p>
       <StatusLine />
-      {!ready ? <Skeleton rows={8} /> : (
-        <div className="theme-list">
-          {themes.map((t, i) => (
-            <button key={t.id} className="card theme-card" onClick={() => go(`/theme/${t.id}`)}>
-              <div className="theme-card-head">
-                <span className="rank-no">{i + 1}</span>
-                <span className="theme-main">
-                  <b>{t.name}</b>
-                  <span className="theme-sub">{t.desc}</span>
-                </span>
-                <RatePill value={t.avg} />
-              </div>
-              <div className="theme-card-foot">
-                <span className="chips">
-                  {t.stocks.slice(0, 3).map((s) => (
-                    <span key={s.code} className="chip">{s.name} <Rate value={s.change_rate} /></span>
-                  ))}
-                </span>
-                <Breadth up={t.up} down={t.down} total={t.stocks.length} />
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
+      <SortToggle value={sort} onChange={changeSort} />
+      <ThemeGrid sort={sort} />
       <Disclaimer />
     </main>
   )
@@ -69,7 +40,7 @@ export function ThemeDetail({ id }) {
           <span className="hero-label">{theme.desc}</span>
           <div className="hero-row">
             <RatePill value={theme.avg} />
-            <span className="hero-meta">상승 {theme.up} · 하락 {theme.down} · 전체 {theme.stocks.length}종목</span>
+            <span className="hero-meta">거래대금 {fmtWonShort(theme.value)} · 상승 {theme.up} · 하락 {theme.down}</span>
           </div>
         </div>
         <div className="card list">

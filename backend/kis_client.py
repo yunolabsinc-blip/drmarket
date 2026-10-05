@@ -333,7 +333,9 @@ async def fetch_market_indices() -> list[dict]:
             cur  = float(o.get("bstp_nmix_prpr", 0))
             chg  = round(float(o.get("bstp_nmix_prdy_vrss", 0)), 2)
             rate = round(float(o.get("bstp_nmix_prdy_ctrt", 0)), 2)
-            results.append({"name": name, "value": cur, "change": chg, "changeRate": rate, "flag": flag, "source": "live"})
+            results.append({"name": name, "value": cur, "change": chg, "changeRate": rate, "flag": flag, "source": "live",
+                            # 시장 전체 당일 거래대금 (백만원 → 원)
+                            "trading_value": int(float(o.get("acml_tr_pbmn", 0) or 0)) * 1_000_000})
 
     if any(r.get("source") == "live" for r in results):
         _cache_set("indices", results)

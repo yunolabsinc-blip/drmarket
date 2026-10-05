@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
+import ThemeGrid, { SortToggle } from '../components/ThemeGrid'
 import { useMarket } from '../lib/store'
 import { getIndexChart } from '../lib/api'
 import { fmtIndex, fmtRate, tone } from '../lib/format'
 import { go } from '../lib/router'
 import { Sparkline } from '../components/Chart'
-import { Disclaimer, Rate, RatePill, Section, Skeleton, StatusLine, StockRow } from '../components/ui'
+import { Disclaimer, Section, Skeleton, StatusLine, StockRow } from '../components/ui'
 import { useRanking } from './Rank'
 
 const INDEX_CODES = { 코스피: '0001', 코스닥: '1001' }
@@ -36,26 +37,6 @@ function IndexCards() {
   )
 }
 
-function TopThemes() {
-  const { themes } = useMarket()
-  const ready = themes.some((t) => t.avg !== null)
-  if (!ready) return <Skeleton rows={5} />
-  return (
-    <div className="card list">
-      {themes.slice(0, 5).map((t, i) => (
-        <button key={t.id} className="theme-row" onClick={() => go(`/theme/${t.id}`)}>
-          <span className="rank-no">{i + 1}</span>
-          <span className="theme-main">
-            <b>{t.name}</b>
-            {t.leader && <span className="theme-sub">{t.leader.name} <Rate value={t.leader.change_rate} /></span>}
-          </span>
-          <RatePill value={t.avg} />
-        </button>
-      ))}
-    </div>
-  )
-}
-
 function TopValue() {
   const { rows, loading } = useRanking('amount')
   if (loading && !rows.length) return <Skeleton rows={5} />
@@ -68,12 +49,15 @@ function TopValue() {
 }
 
 export default function Home() {
+  const [sort, setSort] = useState(() => { try { return localStorage.getItem('drm.themeSort') || 'value' } catch { return 'value' } })
+  const changeSort = (v) => { setSort(v); try { localStorage.setItem('drm.themeSort', v) } catch {} }
   return (
     <main className="page">
       <StatusLine />
       <IndexCards />
-      <Section title="오늘 강한 테마" more={{ href: '#/themes', label: '전체 테마' }}>
-        <TopThemes />
+      <Section title="실시간 테마" more={{ href: '#/themes', label: '전체 테마' }}>
+        <SortToggle value={sort} onChange={changeSort} />
+        <ThemeGrid sort={sort} limit={6} />
       </Section>
       <Section title="거래대금 상위" more={{ href: '#/rank', label: '전체 순위' }}>
         <TopValue />
