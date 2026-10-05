@@ -528,3 +528,4 @@ button.cal-row:hover { background: #fafbfc; }
 .admin-fb span { font-size: 11.5px; color: var(--text-3); }
 .admin-fb p { font-size: 14px; margin-top: 4px; white-space: pre-wrap; word-break: break-all; }
 .wide-ghost { display: block; width: 100%; margin-top: 18px; }
+.pin-input { font-size: 22px !important; letter-spacing: 0.5em; text-align: center; }

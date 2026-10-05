@@ -132,3 +132,37 @@ async def summary(days: int = 14) -> dict:
             pass
     return {"enabled": True, "days": days, "unique_visitors": int(res[-2] or 0), "daily": daily,
             "pages": pages, "events": dict(sorted(totals_e.items(), key=lambda x: -x[1])), "feedback": feedback}
+
+
+# ──────────────────────────────────────────────
+# 관리자 로그인 잠금 (비밀번호 대입 방지)
+# ──────────────────────────────────────────────
+_FAIL_LIMIT, _LOCK_SEC = 5, 900          # 같은 곳: 5번 틀리면 15분
+_GLOBAL_LIMIT, _GLOBAL_SEC = 50, 3600    # 전체: 1시간에 50번 틀리면 1시간
+
+
+def _ipkey(ip: str) -> str:
+    return f"{PREFIX}:adminfail:{hashlib.sha256((ip or '').encode()).hexdigest()[:16]}"
+
+
+async def admin_locked(ip: str) -> tuple[bool, str]:
+    res = await _pipeline([["GET", _ipkey(ip)], ["GET", f"{PREFIX}:adminfail:all"]])
+    if res is None:
+        return True, "잠시 후 다시 시도해 주세요."   # 저장소에 못 붙으면 안전하게 거부
+    mine, total = int(res[0] or 0), int(res[1] or 0)
+    if mine >= _FAIL_LIMIT:
+        return True, "비밀번호를 여러 번 틀려 15분간 잠겼습니다. 잠시 후 다시 시도해 주세요."
+    if total >= _GLOBAL_LIMIT:
+        return True, "로그인 시도가 너무 많아 잠시 막혔습니다. 1시간 뒤 다시 시도해 주세요."
+    return False, ""
+
+
+async def admin_fail(ip: str) -> int:
+    res = await _pipeline([["INCR", _ipkey(ip)], ["EXPIRE", _ipkey(ip), str(_LOCK_SEC)],
+                           ["INCR", f"{PREFIX}:adminfail:all"], ["EXPIRE", f"{PREFIX}:adminfail:all", str(_GLOBAL_SEC), "NX"]])
+    mine = int((res or [0])[0] or 0)
+    return max(0, _FAIL_LIMIT - mine)
+
+
+async def admin_ok(ip: str):
+    await _pipeline([["DEL", _ipkey(ip)]])

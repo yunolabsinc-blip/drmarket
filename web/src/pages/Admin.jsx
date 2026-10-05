@@ -25,7 +25,12 @@ export default function Admin() {
     setError('')
     fetch(`${API_BASE}/api/admin/stats?days=${days}`, { headers: { 'X-Admin-Key': key } })
       .then(async (r) => {
-        if (r.status === 401) { try { localStorage.removeItem(KEY) } catch {} ; setKey(''); throw new Error('관리자 키가 올바르지 않습니다.') }
+        if (r.status === 401 || r.status === 429) {
+          const d = await r.json().catch(() => ({}))
+          try { localStorage.removeItem(KEY) } catch {}
+          setKey('')
+          throw new Error(d.detail || '비밀번호가 올바르지 않습니다.')
+        }
         return r.json()
       })
       .then(setData)
@@ -33,8 +38,9 @@ export default function Admin() {
   }, [key, days])
 
   const save = () => {
-    const k = input.replace(/[\s-]/g, '').toUpperCase()
-    if (!k) return
+    const k = input.replace(/\D/g, '')
+    if (k.length !== 6) { setError('숫자 6자리를 입력해 주세요.'); return }
+    setInput('')
     try { localStorage.setItem(KEY, k) } catch {}
     setKey(k)
   }
@@ -45,8 +51,10 @@ export default function Admin() {
       <main className="page admin">
         {!key ? (
           <div className="card admin-login">
-            <p>관리자 키를 입력하세요. 이 기기에만 저장됩니다.</p>
-            <input type="text" autoCapitalize="characters" autoComplete="off" spellCheck={false} value={input} onChange={(e) => setInput(e.target.value)} placeholder="예) ABCD-EFGH-JKLM-NPQR" onKeyDown={(e) => e.key === 'Enter' && save()} />
+            <p>관리자 비밀번호(숫자 6자리)를 입력하세요. 이 기기에만 저장됩니다.</p>
+            <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="off" className="pin-input"
+              value={input} onChange={(e) => { setInput(e.target.value.replace(/\D/g, '').slice(0, 6)); setError('') }}
+              placeholder="● ● ● ● ● ●" onKeyDown={(e) => e.key === 'Enter' && save()} />
             <button className="btn" onClick={save}>확인</button>
             {error && <p className="fb-msg">{error}</p>}
           </div>
@@ -87,7 +95,7 @@ export default function Admin() {
                 </div>
               )) : <p className="muted-box">아직 받은 의견이 없습니다</p>}
             </div>
-            <button className="btn ghost wide-ghost" onClick={() => { try { localStorage.removeItem(KEY) } catch {} ; setKey(''); setData(null) }}>이 기기에서 관리자 키 지우기</button>
+            <button className="btn ghost wide-ghost" onClick={() => { try { localStorage.removeItem(KEY) } catch {} ; setKey(''); setData(null) }}>이 기기에서 로그아웃</button>
           </>
         )}
       </main>

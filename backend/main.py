@@ -5,6 +5,7 @@ Railway 배포용
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -419,12 +420,20 @@ async def post_feedback(body: FeedbackIn, request: Request):
 
 
 @app.get("/api/admin/stats", include_in_schema=False)
-async def admin_stats(days: int = 14, x_admin_key: str = Header("")):
-    # 띄어쓰기·하이픈·대소문자 차이는 무시 (손으로 옮겨 적을 때 실수 방지)
-    norm = lambda v: re.sub(r"[\s-]", "", v or "").upper()
-    key = norm(os.getenv("ADMIN_KEY", ""))
-    if not key or norm(x_admin_key) != key:
-        raise HTTPException(401, "관리자 키가 올바르지 않습니다.")
+async def admin_stats(request: Request, days: int = 14, x_admin_key: str = Header("")):
+    """관리자 비밀번호(숫자 6자리). 대입 공격을 막기 위해 같은 곳에서 5번 틀리면 15분,
+    전체 실패가 1시간에 50번을 넘으면 그 시간 동안 관리자 로그인을 막는다."""
+    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "")
+    locked, msg = await stats.admin_locked(ip)
+    if locked:
+        raise HTTPException(429, msg)
+    key = re.sub(r"\D", "", os.getenv("ADMIN_KEY", ""))
+    given = re.sub(r"\D", "", x_admin_key or "")
+    if len(key) != 6 or not hmac.compare_digest(given, key):
+        left = await stats.admin_fail(ip)
+        raise HTTPException(401, f"비밀번호가 올바르지 않습니다. ({left}번 더 틀리면 15분간 잠깁니다)" if left > 0
+                            else "비밀번호를 여러 번 틀려 15분간 잠겼습니다.")
+    await stats.admin_ok(ip)
     return await stats.summary(days)
 
 
