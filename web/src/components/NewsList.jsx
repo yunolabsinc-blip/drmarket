@@ -84,9 +84,9 @@ export default function MarketNews() {
         ))}
       </div>
       {items === null ? <Skeleton rows={8} /> : !items.length ? (
-        <div className="card muted-box">{failed ? '뉴스를 불러오지 못했습니다' : '뉴스가 없습니다'}</div>
+        <div className="card muted-box">{failed ? '뉴스를 불러오지 못했습니다' : topic === 'feature' ? '최근 3일 안에 국내 특징주 기사가 없습니다. 휴장일 다음 날에는 장이 열린 뒤 올라옵니다.' : '뉴스가 없습니다'}</div>
       ) : <NewsItems items={items} />}
-      <p className="page-desc" style={{ marginTop: 10 }}>출처: 연합뉴스·파이낸셜뉴스·조선비즈 공개 RSS. 제목을 누르면 요약이, "기사 원문 보기"를 누르면 해당 언론사 페이지가 열립니다.</p>
+      <p className="page-desc" style={{ marginTop: 10 }}>출처: 연합뉴스·파이낸셜뉴스·매일경제·아시아경제·조선비즈·뉴시스 공개 RSS. 제목을 누르면 요약이, "기사 원문 보기"를 누르면 해당 언론사 페이지가 열립니다.</p>
     </>
   )
 }
