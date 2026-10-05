@@ -236,14 +236,19 @@ async def get_orderbook(code: str):
 
 
 @app.get("/api/stock/{code}/chart", summary="종목 차트")
-async def get_stock_chart(code: str, period: str = Query("D", description="1m(당일 분봉) / D / W / M")):
-    if period == "1m":
-        return {"period": period, "candles": await kis.fetch_minute_chart(code)}
+async def get_stock_chart(code: str, period: str = Query("D", description="1m/3m/5m/10m/30m/60m (당일 분봉) · D/W/M/Y (일/주/월/년봉)")):
+    if period.endswith("m") and period[:-1].isdigit():
+        n = int(period[:-1])
+        if n not in (1, 3, 5, 10, 30, 60):
+            raise HTTPException(400, "분봉은 1, 3, 5, 10, 30, 60분만 지원합니다.")
+        return {"period": period, "candles": kis.aggregate_minutes(await kis.fetch_minute_chart(code), n)}
+    if period not in ("D", "W", "M", "Y"):
+        raise HTTPException(400, "period는 1m/3m/5m/10m/30m/60m 또는 D/W/M/Y 입니다.")
     return {"period": period, "candles": await kis.fetch_daily_chart(code, period)}
 
 
 @app.get("/api/index/{code}/chart", summary="지수 차트")
-async def get_index_chart(code: str, period: str = Query("D", description="D / W / M")):
+async def get_index_chart(code: str, period: str = Query("D", description="D / W / M / Y")):
     """code: 0001=코스피, 1001=코스닥"""
     return {"period": period, "candles": await kis.fetch_daily_chart(code, period, is_index=True)}
 

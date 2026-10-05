@@ -802,46 +802,78 @@ async def fetch_stock_detail(code: str) -> dict | None:
     return result
 
 
+# 기간별 조회 범위: (한 번에 요청할 일수, 페이지 수). KIS는 1회 최대 100봉.
+_CHART_SPAN = {"D": (140, 3), "W": (700, 3), "M": (3000, 2), "Y": (36500, 1)}
+
+
 async def fetch_daily_chart(code: str, period: str = "D", is_index: bool = False) -> list[dict]:
-    """일/주/월봉 (최대 100개). is_index=True 면 업종지수(0001=코스피, 1001=코스닥)"""
-    period = period if period in ("D", "W", "M") else "D"
-    key = f"chart:{'U' if is_index else 'J'}:{code}:{period}"
+    """일(D)/주(W)/월(M)/년(Y)봉. 여러 구간을 동시에 받아 이어 붙인다 (일봉 약 300개, 주봉 약 6년, 월봉 약 16년)"""
+    period = period if period in _CHART_SPAN else "D"
+    key = f"chart:{'U' if is_index else KIS_MARKET}:{code}:{period}"
     cached = _cache_get(key, 60)
     if cached:
         return cached
-    end = datetime.now()
-    span = {"D": 160, "W": 800, "M": 3300}[period]
-    start = end - timedelta(days=span)
-    params = {
-        "FID_COND_MRKT_DIV_CODE": "U" if is_index else KIS_MARKET,
-        "FID_INPUT_ISCD": code,
-        "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
-        "FID_INPUT_DATE_2": end.strftime("%Y%m%d"),
-        "FID_PERIOD_DIV_CODE": period,
-    }
+    span_days, pages = _CHART_SPAN[period]
     if is_index:
         path, tr = "/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice", "FHKUP03500100"
         f = ("bstp_nmix_oprc", "bstp_nmix_hgpr", "bstp_nmix_lwpr", "bstp_nmix_prpr")
     else:
-        params["FID_ORG_ADJ_PRC"] = "0"
         path, tr = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice", "FHKST03010100"
         f = ("stck_oprc", "stck_hgpr", "stck_lwpr", "stck_clpr")
-    data = await _get(path, params, tr)
-    rows = []
-    for o in (data or {}).get("output2", []) or []:
-        d = o.get("stck_bsop_date")
-        if not d:
-            continue
-        rows.append({
-            "t": f"{d[:4]}-{d[4:6]}-{d[6:]}",
-            "o": _num(o.get(f[0])), "h": _num(o.get(f[1])),
-            "l": _num(o.get(f[2])), "c": _num(o.get(f[3])),
-            "v": _num(o.get("acml_vol"), int),
-        })
-    rows.reverse()   # 오래된 → 최신
+
+    async def page(n: int):
+        end = datetime.now() - timedelta(days=span_days * n)
+        start = end - timedelta(days=span_days)
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "U" if is_index else KIS_MARKET,
+            "FID_INPUT_ISCD": code,
+            "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
+            "FID_INPUT_DATE_2": end.strftime("%Y%m%d"),
+            "FID_PERIOD_DIV_CODE": period,
+        }
+        if not is_index:
+            params["FID_ORG_ADJ_PRC"] = "0"   # 수정주가
+        data = await _get(path, params, tr)
+        return (data or {}).get("output2", []) or []
+
+    seen: dict[str, dict] = {}
+    for out in await asyncio.gather(*[page(n) for n in range(pages)]):
+        for o in out:
+            d = o.get("stck_bsop_date")
+            if not d or _num(o.get(f[3])) <= 0:
+                continue
+            seen[d] = {
+                "t": f"{d[:4]}-{d[4:6]}-{d[6:]}",
+                "o": _num(o.get(f[0])), "h": _num(o.get(f[1])),
+                "l": _num(o.get(f[2])), "c": _num(o.get(f[3])),
+                "v": _num(o.get("acml_vol"), int),
+            }
+    rows = [seen[k] for k in sorted(seen)]   # 오래된 → 최신
     if rows:
         _cache_set(key, rows)
     return rows
+
+
+def aggregate_minutes(rows: list[dict], n: int) -> list[dict]:
+    """1분봉 → n분봉 (장 시작 시각 기준으로 n분 단위 묶음)"""
+    if n <= 1 or not rows:
+        return rows
+    out: list[dict] = []
+    for r in rows:
+        hh, mm = int(r["t"][:2]), int(r["t"][3:5])
+        bucket = (hh * 60 + mm) // n
+        if out and out[-1]["_b"] == bucket:
+            cur = out[-1]
+            cur["h"] = max(cur["h"], r["h"])
+            cur["l"] = min(cur["l"], r["l"])
+            cur["c"] = r["c"]
+            cur["v"] += r["v"]
+        else:
+            start = bucket * n
+            out.append({"_b": bucket, "t": f"{start // 60:02d}:{start % 60:02d}", **{k: r[k] for k in ("o", "h", "l", "c", "v")}})
+    for r in out:
+        del r["_b"]
+    return out
 
 
 async def fetch_minute_chart(code: str) -> list[dict]:

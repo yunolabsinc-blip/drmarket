@@ -7,12 +7,18 @@ import Chart from '../components/Chart'
 import OrderBook from '../components/OrderBook'
 import { Disclaimer, Empty, Rate, StarIcon, SubBar } from '../components/ui'
 
-const PERIODS = [
-  { id: '1m', label: '당일', type: 'line' },
-  { id: 'D', label: '3개월', type: 'candle' },
-  { id: 'W', label: '1년', type: 'candle' },
-  { id: 'M', label: '전체', type: 'line' },
+// MTS 방식: 분봉(1·3·5·10·30·60) + 일·주·월·년봉
+const MINUTES = [1, 3, 5, 10, 30, 60]
+const MAIN_PERIODS = [
+  { id: 'min', label: '분' },
+  { id: 'D', label: '일' },
+  { id: 'W', label: '주' },
+  { id: 'M', label: '월' },
+  { id: 'Y', label: '년' },
 ]
+const INDEX_PERIODS = MAIN_PERIODS.slice(1)
+const loadPeriod = (key, fallback) => { try { return localStorage.getItem(key) || fallback } catch { return fallback } }
+const savePeriod = (key, v) => { try { localStorage.setItem(key, v) } catch {} }
 
 function useChart(fetcher, key, period) {
   const [state, setState] = useState({ candles: null, error: false })
@@ -27,12 +33,26 @@ function useChart(fetcher, key, period) {
   return state
 }
 
+// value: '5m' | 'D' | 'W' | 'M' | 'Y'
 function PeriodTabs({ periods, value, onChange }) {
+  const isMin = value.endsWith('m')
+  const main = isMin ? 'min' : value
+  const minute = isMin ? Number(value.slice(0, -1)) : 1
   return (
-    <div className="period-tabs">
-      {periods.map((p) => (
-        <button key={p.id} className={value === p.id ? 'on' : ''} onClick={() => onChange(p.id)}>{p.label}</button>
-      ))}
+    <div className="period-tabs-wrap">
+      <div className="period-tabs">
+        {periods.map((p) => (
+          <button key={p.id} className={main === p.id ? 'on' : ''}
+            onClick={() => onChange(p.id === 'min' ? `${minute}m` : p.id)}>{p.label}</button>
+        ))}
+      </div>
+      {isMin && (
+        <div className="period-tabs sub">
+          {MINUTES.map((m) => (
+            <button key={m} className={minute === m ? 'on' : ''} onClick={() => onChange(`${m}m`)}>{m}분</button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -50,7 +70,8 @@ export default function Stock({ code }) {
   const { prices, stockMap, favorites, toggleFavorite, memos, setMemo, watch, flash } = useMarket()
   const [detail, setDetail] = useState(null)
   const [failed, setFailed] = useState(false)
-  const [period, setPeriod] = useState('1m')
+  const [period, setPeriodState] = useState(() => loadPeriod('drm.chartPeriod', 'D'))
+  const setPeriod = (v) => { setPeriodState(v); savePeriod('drm.chartPeriod', v) }
   const [view, setView] = useState('chart')
   const [news, setNews] = useState([])
   const [memo, setMemoText] = useState(memos[code] || '')
@@ -58,8 +79,8 @@ export default function Stock({ code }) {
   const info = stockMap[code]
   const live = prices[code]
   const name = info?.name || live?.name || code
-  const p = PERIODS.find((x) => x.id === period)
   const chart = useChart(getStockChart, code, period)
+  const intraday = period.endsWith('m')
 
   useEffect(() => { watch(code) }, [code, watch])
   useEffect(() => {
@@ -120,9 +141,9 @@ export default function Stock({ code }) {
         {view === 'chart' ? (
           <div className="card chart-card">
             {chart.candles === null ? <div className="skeleton chart-skel" /> :
-              <Chart candles={chart.candles} type={p.type} baseline={period === '1m' ? d?.prev_close : undefined}
-                format={fmtPrice} />}
-            <PeriodTabs periods={PERIODS} value={period} onChange={setPeriod} />
+              <Chart candles={chart.candles} baseline={intraday ? d?.prev_close : undefined}
+                initialCount={intraday ? 120 : 80} format={fmtPrice} />}
+            <PeriodTabs periods={MAIN_PERIODS} value={period} onChange={setPeriod} />
           </div>
         ) : (
           <div className="card">
@@ -190,15 +211,11 @@ export default function Stock({ code }) {
 }
 
 const INDEX_NAMES = { '0001': '코스피', '1001': '코스닥' }
-const INDEX_PERIODS = [
-  { id: 'D', label: '3개월', type: 'line' },
-  { id: 'W', label: '1년', type: 'line' },
-  { id: 'M', label: '전체', type: 'line' },
-]
 
 export function IndexPage({ code }) {
   const { indices } = useMarket()
-  const [period, setPeriod] = useState('D')
+  const [period, setPeriodState] = useState(() => loadPeriod('drm.indexPeriod', 'D'))
+  const setPeriod = (v) => { setPeriodState(v); savePeriod('drm.indexPeriod', v) }
   const chart = useChart(getIndexChart, code, period)
   const name = INDEX_NAMES[code] || '지수'
   const cur = indices.find((i) => i.name === name)
@@ -220,7 +237,7 @@ export function IndexPage({ code }) {
         </div>
         <div className="card chart-card">
           {chart.candles === null ? <div className="skeleton chart-skel" /> :
-            <Chart candles={chart.candles} type="line" format={fmtIndex} />}
+            <Chart candles={chart.candles} format={fmtIndex} />}
           <PeriodTabs periods={INDEX_PERIODS} value={period} onChange={setPeriod} />
         </div>
         <Disclaimer />
