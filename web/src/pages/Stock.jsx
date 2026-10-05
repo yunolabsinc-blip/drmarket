@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { themesOfStock, useMarket } from '../lib/store'
-import { getDetail, getIndexChart, getNews, getStockChart } from '../lib/api'
+import { getDetail, getIndexChart, getLimitUps, getNews, getStockChart } from '../lib/api'
 import { fmtChange, fmtIndex, fmtPrice, fmtRate, fmtVolume, fmtWonShort, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import Chart from '../components/Chart'
 import OrderBook from '../components/OrderBook'
 import { Disclaimer, Empty, Rate, StarIcon, SubBar } from '../components/ui'
+import { timeAgo } from '../components/NewsList'
 
 // MTS 방식: 분봉(1·3·5·10·30·60) + 일·주·월·년봉
 const MINUTES = [1, 3, 5, 10, 30, 60]
@@ -74,6 +75,8 @@ export default function Stock({ code }) {
   const setPeriod = (v) => { setPeriodState(v); savePeriod('drm.chartPeriod', v) }
   const [view, setView] = useState('chart')
   const [news, setNews] = useState([])
+  const [limits, setLimits] = useState(null)
+  const [showLimits, setShowLimits] = useState(false)
   const [memo, setMemoText] = useState(memos[code] || '')
   const [saved, setSaved] = useState(false)
   const info = stockMap[code]
@@ -101,6 +104,13 @@ export default function Stock({ code }) {
     getNews(code, name).then((d) => setNews(d.news || [])).catch(() => setNews([]))
   }, [code, name])
   useEffect(() => setMemoText(memos[code] || ''), [code])
+  useEffect(() => {
+    let alive = true
+    setLimits(null)
+    setShowLimits(false)
+    getLimitUps(code).then((d) => alive && setLimits(d)).catch(() => alive && setLimits({ up_count: null }))
+    return () => { alive = false }
+  }, [code])
 
   if (!/^\d{6}$/.test(code)) {
     return (<><SubBar title="종목" /><main className="page"><Empty title="잘못된 종목 코드입니다" /></main></>)
@@ -165,7 +175,31 @@ export default function Stock({ code }) {
             <Stat label="52주 최저" value={fmtPrice(d.w52_low)} />
             <Stat label="PER" value={d.per ? `${d.per.toFixed(2)}배` : '-'} />
             <Stat label="PBR" value={d.pbr ? `${d.pbr.toFixed(2)}배` : '-'} />
+            <Stat label="2년 내 상한가" className={limits?.up_count ? 'up' : ''}
+              value={limits === null ? '…' : limits.up_count === null ? '-' : `${limits.up_count}회`} />
+            <Stat label="2년 내 하한가" className={limits?.down_count ? 'down' : ''}
+              value={limits === null ? '…' : limits.down_count === null ? '-' : `${limits.down_count}회`} />
           </div>
+        )}
+
+        {limits?.up_count > 0 && (
+          <section className="section">
+            <div className="section-head">
+              <h2>상한가 기록 <small className="muted">최근 2년</small></h2>
+              <button className="more" onClick={() => setShowLimits((v) => !v)}>{showLimits ? '접기' : `${limits.up_count}회 보기`}</button>
+            </div>
+            {showLimits && (
+              <div className="card list">
+                {limits.ups.map((u) => (
+                  <div key={u.t} className="limit-row">
+                    <span>{u.t}</span>
+                    <b className="up">{u.rate != null ? `+${u.rate.toFixed(2)}%` : '상한가'}</b>
+                    <small>종가 {fmtPrice(u.c)}</small>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         )}
 
         {themes.length > 0 && (
@@ -184,7 +218,7 @@ export default function Stock({ code }) {
               {news.map((n, i) => (
                 <a key={i} className="news-row" href={n.link || n.source} target="_blank" rel="noopener noreferrer">
                   <b>{n.title}</b>
-                  <span>{n.time ? new Date(n.time).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                  <span>{n.source}{n.source && n.time ? ' · ' : ''}{timeAgo(n.time)}</span>
                 </a>
               ))}
             </div>

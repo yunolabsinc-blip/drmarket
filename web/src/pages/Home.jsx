@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import ThemeGrid, { SortToggle } from '../components/ThemeGrid'
+import { Headlines } from '../components/NewsList'
 import { useMarket } from '../lib/store'
 import { getIndexChart } from '../lib/api'
 import { fmtIndex, fmtRate, tone } from '../lib/format'
@@ -61,6 +62,9 @@ export default function Home() {
       </Section>
       <Section title="거래대금 상위" more={{ href: '#/rank', label: '전체 순위' }}>
         <TopValue />
+      </Section>
+      <Section title="주요 뉴스" more={{ href: '#/market/news', label: '전체 뉴스' }}>
+        <Headlines count={5} />
       </Section>
       <Disclaimer />
     </main>

@@ -16,7 +16,7 @@ function Screen({ route, openSearch }) {
     case 'themes': return <Themes />
     case 'theme': return <ThemeDetail id={route.param} />
     case 'rank': return <Rank />
-    case 'market': return <Market />
+    case 'market': return <Market tab={route.param} />
     case 'watch': return <Watch onSearch={openSearch} />
     case 'stock': return <Stock key={route.param} code={route.param || ''} />
     case 'index': return <IndexPage key={route.param} code={route.param || ''} />

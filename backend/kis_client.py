@@ -806,14 +806,15 @@ async def fetch_stock_detail(code: str) -> dict | None:
 _CHART_SPAN = {"D": (140, 3), "W": (700, 3), "M": (3000, 2), "Y": (36500, 1)}
 
 
-async def fetch_daily_chart(code: str, period: str = "D", is_index: bool = False) -> list[dict]:
+async def fetch_daily_chart(code: str, period: str = "D", is_index: bool = False, pages: int | None = None) -> list[dict]:
     """일(D)/주(W)/월(M)/년(Y)봉. 여러 구간을 동시에 받아 이어 붙인다 (일봉 약 300개, 주봉 약 6년, 월봉 약 16년)"""
     period = period if period in _CHART_SPAN else "D"
-    key = f"chart:{'U' if is_index else KIS_MARKET}:{code}:{period}"
+    span_days, default_pages = _CHART_SPAN[period]
+    pages = pages or default_pages
+    key = f"chart:{'U' if is_index else KIS_MARKET}:{code}:{period}:{pages}"
     cached = _cache_get(key, 60)
     if cached:
         return cached
-    span_days, pages = _CHART_SPAN[period]
     if is_index:
         path, tr = "/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice", "FHKUP03500100"
         f = ("bstp_nmix_oprc", "bstp_nmix_hgpr", "bstp_nmix_lwpr", "bstp_nmix_prpr")
@@ -847,6 +848,7 @@ async def fetch_daily_chart(code: str, period: str = "D", is_index: bool = False
                 "o": _num(o.get(f[0])), "h": _num(o.get(f[1])),
                 "l": _num(o.get(f[2])), "c": _num(o.get(f[3])),
                 "v": _num(o.get("acml_vol"), int),
+                "s": o.get("prdy_vrss_sign", ""),   # 1=상한, 2=상승, 3=보합, 4=하한, 5=하락
             }
     rows = [seen[k] for k in sorted(seen)]   # 오래된 → 최신
     if rows:

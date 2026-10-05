@@ -27,7 +27,7 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
     const i = start + Math.floor((clientX - rect.left - PAD.left) / step)
     return Math.max(start, Math.min(end - 1, i))
   }
-  const clampCount = (n) => Math.round(Math.max(10, Math.min(live.current.len, n)))
+  const clampCount = (n) => Math.round(Math.min(live.current.len, Math.max(10, n)))
   const clampEnd = (e) => Math.max(Math.min(live.current.count, live.current.len), Math.min(live.current.len, e))
 
   useEffect(() => {
@@ -129,7 +129,7 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
     })
   }, [candles, len])
 
-  const count = Math.max(10, Math.min(view.count, len))
+  const count = Math.min(len, Math.max(10, view.count))
   const end = Math.max(count, Math.min(view.end, len))
   const start = end - count
   const visible = candles ? candles.slice(start, end) : []

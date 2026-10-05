@@ -4,12 +4,21 @@ import { getMarketOverview } from '../lib/api'
 import { fmtIndex, fmtRate, fmtWonShort, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import { Sparkline } from '../components/Chart'
+import MarketNews from '../components/NewsList'
+import Calendar from '../components/Calendar'
 import { Disclaimer, Section, Skeleton, StatusLine } from '../components/ui'
 
-function useOverview() {
+const TABS = [
+  { id: 'overview', label: '종합', path: '/market' },
+  { id: 'news', label: '뉴스', path: '/market/news' },
+  { id: 'calendar', label: '일정', path: '/market/calendar' },
+]
+
+function useOverview(active) {
   const [data, setData] = useState(null)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
+    if (!active) return
     let alive = true
     let timer
     const load = () =>
@@ -19,7 +28,7 @@ function useOverview() {
         .finally(() => { if (alive) timer = setTimeout(load, marketPhase().key === 'open' ? 30000 : 180000) })
     load()
     return () => { alive = false; clearTimeout(timer) }
-  }, [])
+  }, [active])
   return { data, failed }
 }
 
@@ -111,13 +120,11 @@ function Sectors({ sectors }) {
   )
 }
 
-export default function Market() {
-  const { data, failed } = useOverview()
+function Overview() {
+  const { data, failed } = useOverview(true)
   const [mkt, setMkt] = useState('kospi')
   return (
-    <main className="page">
-      <h1 className="page-title">시장종합</h1>
-      <StatusLine />
+    <>
       <IndexBoard global={data?.global} />
       <Section title="투자자별 매매동향">
         <div className="segmented">
@@ -129,6 +136,24 @@ export default function Market() {
       <Section title="업종별 등락 (코스피)">
         {!data && !failed ? <Skeleton rows={6} /> : <Sectors sectors={data?.sectors} />}
       </Section>
+    </>
+  )
+}
+
+export default function Market({ tab }) {
+  const active = TABS.find((t) => t.id === tab) ? tab : 'overview'
+  return (
+    <main className="page">
+      <h1 className="page-title">{active === 'news' ? '뉴스' : active === 'calendar' ? '시장 일정' : '시장종합'}</h1>
+      <StatusLine />
+      <div className="segmented" role="tablist">
+        {TABS.map((t) => (
+          <a key={t.id} role="tab" aria-selected={active === t.id} href={`#${t.path}`} className={active === t.id ? 'on' : ''}>{t.label}</a>
+        ))}
+      </div>
+      {active === 'overview' && <Overview />}
+      {active === 'news' && <MarketNews />}
+      {active === 'calendar' && <Calendar />}
       <Disclaimer />
     </main>
   )

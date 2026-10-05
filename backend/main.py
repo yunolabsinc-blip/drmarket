@@ -18,6 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
 import kis_client as kis
+import market_events
+import news
 
 # ──────────────────────────────────────────────
 # 로깅
@@ -257,24 +259,36 @@ async def get_index_chart(code: str, period: str = Query("D", description="D / W
 # 뉴스
 # ──────────────────────────────────────────────
 @app.get("/api/stock/{code}/news", summary="종목 뉴스")
-async def get_stock_news(
-    code: str,
-    name: str = Query("", description="종목명 (뉴스 검색용)"),
-    count: int = Query(5, ge=1, le=20),
-):
-    """
-    종목 관련 뉴스를 반환합니다.
-    NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수 설정 시 네이버 뉴스 API 사용.
-    """
-    stock_name = name or code
-    if not name:
-        # 종목명 조회 시도
-        try:
-            price_data = await kis.fetch_stock_price(code)
-            stock_name = price_data.get("name", code)
-        except Exception:
-            pass
-    return {"news": await kis.fetch_stock_news(stock_name, count)}
+async def get_stock_news(code: str, name: str = Query("", description="종목명"), count: int = Query(10, ge=1, le=30)):
+    """종목명으로 검색한 최신 뉴스 (제목·매체·시각·링크)"""
+    stock_name = name
+    if not stock_name:
+        d = await kis.fetch_stock_price(code)
+        stock_name = d.get("name") or code
+    return {"news": await news.stock_news(stock_name, count)}
+
+
+@app.get("/api/news", summary="통합 뉴스")
+async def get_market_news(topic: str = Query("market", description="market / feature / global / economy"), count: int = Query(30, ge=1, le=50)):
+    """최근 1일 시장 뉴스"""
+    return {"topic": topic, "news": await news.market_news(topic, count)}
+
+
+@app.get("/api/news/headlines", summary="주요 뉴스")
+async def get_headlines(count: int = Query(5, ge=1, le=10)):
+    return {"news": await news.headlines(count)}
+
+
+@app.get("/api/market/calendar", summary="시장 일정")
+async def get_calendar(days: int = Query(60, ge=7, le=90)):
+    """휴장·공모주 청약/상장·배당 기준일·주주총회·무상증자·감자·합병/분할"""
+    return {"events": await market_events.fetch_calendar(days)}
+
+
+@app.get("/api/stock/{code}/limit-ups", summary="상한가 기록")
+async def get_limit_ups(code: str, years: int = Query(2, ge=1, le=3)):
+    """최근 N년 상한가·하한가 마감일"""
+    return await market_events.fetch_limit_ups(code, years)
 
 
 # ──────────────────────────────────────────────

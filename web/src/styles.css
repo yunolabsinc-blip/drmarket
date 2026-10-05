@@ -384,3 +384,29 @@ b { font-weight: 650; }
 .flow-table th:first-child, .flow-table td:first-child { text-align: left; color: var(--text-2); }
 .flow-table tr:last-child td { border-bottom: 0; }
 .tabbar .tab { font-size: 10.5px; }
+
+/* ───────── 뉴스 · 일정 · 상한가 ───────── */
+.segmented a { flex: 1; text-align: center; padding: 9px 0; border-radius: 10px; font-size: 14px; font-weight: 600; color: var(--text-3); }
+.segmented a.on { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); }
+.chip.chip-on { background: var(--text); color: #fff; }
+.cal-day { margin-top: 18px; }
+.cal-day h3 { font-size: 14px; font-weight: 700; color: var(--text-2); margin: 0 4px 8px; display: flex; align-items: center; gap: 8px; }
+.cal-day.today h3 { color: var(--text); }
+.cal-today { font-size: 11px; font-weight: 700; color: var(--brand); background: var(--brand-soft); padding: 2px 7px; border-radius: 999px; }
+.cal-row { width: 100%; display: flex; align-items: flex-start; gap: 10px; padding: 11px 16px; text-align: left; }
+button.cal-row:hover { background: #fafbfc; }
+.cal-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cal-main b { font-weight: 600; font-size: 14.5px; }
+.cal-main small { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-type { flex: none; margin-top: 2px; font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: #f2f3f5; color: var(--text-2); white-space: nowrap; }
+.ev-holiday { background: #fff0f1; color: var(--up); }
+.ev-ipo { background: var(--brand-soft); color: var(--brand); }
+.ev-listing { background: #ecfdf5; color: #059669; }
+.ev-dividend { background: #fffbeb; color: #b45309; }
+.ev-bonus { background: #ecfdf5; color: #059669; }
+.ev-meeting { background: #eef5ff; color: var(--down); }
+.ev-capdec, .ev-merger { background: #f5f3ff; color: #7c3aed; }
+.limit-row { display: flex; align-items: baseline; gap: 12px; padding: 10px 18px; font-size: 14px; }
+.limit-row span { flex: 1; font-weight: 600; }
+.limit-row small { color: var(--text-3); font-size: 12px; }
+.section-head h2 small { font-size: 12px; font-weight: 500; margin-left: 4px; }

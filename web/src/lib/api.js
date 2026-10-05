@@ -23,4 +23,8 @@ export const getMarketOverview = () => api('/api/market/overview', { timeout: 30
 export const getDetail = (code) => api(`/api/stock/${code}/detail`)
 export const getStockChart = (code, period) => api(`/api/stock/${code}/chart?period=${period}`, { timeout: 30000 })
 export const getIndexChart = (code, period) => api(`/api/index/${code}/chart?period=${period}`)
+export const getMarketNews = (topic) => api(`/api/news?topic=${topic}`)
+export const getHeadlines = (count = 5) => api(`/api/news/headlines?count=${count}`)
+export const getCalendar = () => api('/api/market/calendar', { timeout: 40000 })
+export const getLimitUps = (code) => api(`/api/stock/${code}/limit-ups`, { timeout: 40000 })
 export const getNews = (code, name) => api(`/api/stock/${code}/news?name=${encodeURIComponent(name)}&count=6`)
