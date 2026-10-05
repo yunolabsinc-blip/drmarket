@@ -33,7 +33,7 @@ export default function Admin() {
   }, [key, days])
 
   const save = () => {
-    const k = input.trim()
+    const k = input.replace(/[\s-]/g, '').toUpperCase()
     if (!k) return
     try { localStorage.setItem(KEY, k) } catch {}
     setKey(k)
@@ -46,7 +46,7 @@ export default function Admin() {
         {!key ? (
           <div className="card admin-login">
             <p>관리자 키를 입력하세요. 이 기기에만 저장됩니다.</p>
-            <input type="password" value={input} onChange={(e) => setInput(e.target.value)} placeholder="관리자 키" onKeyDown={(e) => e.key === 'Enter' && save()} />
+            <input type="text" autoCapitalize="characters" autoComplete="off" spellCheck={false} value={input} onChange={(e) => setInput(e.target.value)} placeholder="예) ABCD-EFGH-JKLM-NPQR" onKeyDown={(e) => e.key === 'Enter' && save()} />
             <button className="btn" onClick={save}>확인</button>
             {error && <p className="fb-msg">{error}</p>}
           </div>

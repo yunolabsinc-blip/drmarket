@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import random
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime
 
@@ -419,8 +420,10 @@ async def post_feedback(body: FeedbackIn, request: Request):
 
 @app.get("/api/admin/stats", include_in_schema=False)
 async def admin_stats(days: int = 14, x_admin_key: str = Header("")):
-    key = os.getenv("ADMIN_KEY", "")
-    if not key or x_admin_key != key:
+    # 띄어쓰기·하이픈·대소문자 차이는 무시 (손으로 옮겨 적을 때 실수 방지)
+    norm = lambda v: re.sub(r"[\s-]", "", v or "").upper()
+    key = norm(os.getenv("ADMIN_KEY", ""))
+    if not key or norm(x_admin_key) != key:
         raise HTTPException(401, "관리자 키가 올바르지 않습니다.")
     return await stats.summary(days)
 
