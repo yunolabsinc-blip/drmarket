@@ -24,7 +24,7 @@ export function NewsRow({ item, open, onToggle }) {
   return (
     <div className={`news-item ${open ? 'open' : ''}`}>
       <button className="news-row" onClick={onToggle} aria-expanded={open}>
-        <b>{item.title}</b>
+        <b>{item.kind === 'feature' && <span className="tag-feature">특징주</span>}{item.title}</b>
         <span>{item.source}{item.source && item.time ? ' · ' : ''}{timeAgo(item.time)}</span>
       </button>
       {open && (
@@ -49,14 +49,14 @@ export function NewsItems({ items }) {
 }
 
 function useNews(fetcher, key, intervalMs = 180000) {
-  const [state, setState] = useState({ items: null, failed: false })
+  const [state, setState] = useState({ items: null, failed: false, fallback: null })
   useEffect(() => {
     let alive = true
     let timer
     setState({ items: null, failed: false })
     const load = () =>
       fetcher()
-        .then((d) => alive && setState({ items: d.news || [], failed: false }))
+        .then((d) => alive && setState({ items: d.news || [], failed: false, fallback: d.fallback || null }))
         .catch(() => alive && setState((s) => ({ items: s.items || [], failed: true })))
         .finally(() => { if (alive) timer = setTimeout(load, intervalMs) })
     load()
@@ -75,9 +75,10 @@ export function Headlines({ count = 5 }) {
 export default function MarketNews() {
   const [topic, setTopic] = useState(() => { try { return sessionStorage.getItem('drm.newsTopic') || 'market' } catch { return 'market' } })
   const select = (id) => { setTopic(id); try { sessionStorage.setItem('drm.newsTopic', id) } catch {} }
-  const { items, failed } = useNews(() => getMarketNews(topic), topic)
+  const { items, failed, fallback } = useNews(() => getMarketNews(topic), topic)
   return (
     <>
+      {fallback && <div className="note">지금은 국내 특징주 기사가 없어 증시 뉴스를 보여드립니다. 장이 열리면 특징주 기사가 올라옵니다.</div>}
       <div className="sort-toggle" role="tablist">
         {TOPICS.map((t) => (
           <button key={t.id} role="tab" aria-selected={topic === t.id} className={topic === t.id ? 'on' : ''} onClick={() => select(t.id)}>{t.label}</button>

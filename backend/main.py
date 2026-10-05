@@ -270,8 +270,12 @@ async def get_stock_news(code: str, name: str = Query("", description="종목명
 
 @app.get("/api/news", summary="통합 뉴스")
 async def get_market_news(topic: str = Query("market", description="market / feature / global / economy"), count: int = Query(30, ge=1, le=50)):
-    """최근 1일 시장 뉴스"""
-    return {"topic": topic, "news": await news.market_news(topic, count)}
+    """시장 뉴스. 특징주 기사가 없으면(휴장일 등) 증시 뉴스로 대체하고 fallback 으로 알린다"""
+    items = await news.market_news(topic, count)
+    fallback = None
+    if not items and topic == "feature":
+        items, fallback = await news.market_news("market", count), "market"
+    return {"topic": topic, "fallback": fallback, "news": items}
 
 
 @app.get("/api/news/headlines", summary="주요 뉴스")

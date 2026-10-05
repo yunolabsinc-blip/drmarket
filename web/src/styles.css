@@ -436,7 +436,7 @@ button.cal-row:hover { background: #fafbfc; }
 .news-row { width: 100%; }
 .news-item.open .news-row b { color: var(--brand); }
 .news-body { padding: 0 18px 14px; }
-.news-body p { font-size: 13.5px; line-height: 1.6; color: var(--text-2); margin-bottom: 10px; word-break: keep-all; }
+.news-body p { font-size: 13.5px; line-height: 1.6; color: var(--text-2); margin-bottom: 10px; word-break: keep-all; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .btn.ghost { background: #f2f3f5; color: var(--text); }
 .sheet-layer { position: fixed; inset: 0; z-index: 70; background: rgba(17, 24, 39, 0.4); display: flex; align-items: flex-end; justify-content: center; animation: fade .15s ease-out; }
 .sheet {
@@ -447,7 +447,7 @@ button.cal-row:hover { background: #fafbfc; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; margin-right: -8px; }
 .sheet h3 { font-size: 17px; font-weight: 700; line-height: 1.4; letter-spacing: -0.02em; word-break: keep-all; }
 .sheet-meta { font-size: 12.5px; color: var(--text-3); margin: 6px 0 12px; }
-.sheet-desc { font-size: 14.5px; line-height: 1.65; color: var(--text-2); word-break: keep-all; max-height: 40vh; overflow-y: auto; }
+.sheet-desc { font-size: 14.5px; line-height: 1.65; color: var(--text-2); word-break: keep-all; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .sheet-actions { display: flex; gap: 8px; margin-top: 18px; }
 .sheet-actions .btn { flex: 1; }
 
@@ -478,3 +478,9 @@ button.cal-row:hover { background: #fafbfc; }
 
 .btn.wide { display: block; width: 100%; margin-top: 12px; padding: 14px; font-size: 15px; background: var(--card); color: var(--brand); box-shadow: inset 0 0 0 1.5px var(--brand-soft); }
 .btn.wide:hover { background: var(--brand-soft); }
+
+.note { padding: 10px 14px; border-radius: 10px; background: var(--brand-soft); color: var(--brand); font-size: 13px; margin-bottom: 10px; }
+
+.ticker-badge.feature { color: var(--brand); }
+.ticker-badge.feature i { background: var(--brand); }
+.tag-feature { display: inline-block; font-size: 10.5px; font-weight: 700; color: var(--brand); background: var(--brand-soft); padding: 1px 6px; border-radius: 5px; margin-right: 6px; vertical-align: 2px; }

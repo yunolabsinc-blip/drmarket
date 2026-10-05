@@ -209,5 +209,28 @@ async def stock_news(name: str, count: int = 10) -> list[dict]:
 
 
 async def headlines(count: int = 5) -> list[dict]:
-    """홈 화면·뉴스 띠용: 증시 최신"""
-    return (await market_news("market", 20))[:count]
+    """홈 화면·뉴스 띠용: 증시 뉴스와 국내 특징주를 번갈아 섞는다 (특징주가 있으면 먼저)"""
+    market, feature = await asyncio.gather(market_news("market", 20), market_news("feature", 20))
+    for it in feature:
+        it["kind"] = "feature"
+    for it in market:
+        it.setdefault("kind", "market")
+    seen, out = set(), []
+    fi, mi = 0, 0
+    while len(out) < count and (fi < len(feature) or mi < len(market)):
+        # 특징주 → 증시 순으로 번갈아, 중복 제목 제외
+        for lst, idx_name in ((feature, "fi"), (market, "mi")):
+            i = fi if idx_name == "fi" else mi
+            while i < len(lst) and re.sub(r"\W+", "", lst[i]["title"])[:40] in seen:
+                i += 1
+            if i < len(lst):
+                seen.add(re.sub(r"\W+", "", lst[i]["title"])[:40])
+                out.append(lst[i])
+                i += 1
+            if idx_name == "fi":
+                fi = i
+            else:
+                mi = i
+            if len(out) >= count:
+                break
+    return out

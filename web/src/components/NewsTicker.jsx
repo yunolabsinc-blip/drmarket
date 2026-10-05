@@ -41,7 +41,7 @@ export default function NewsTicker({ hidden }) {
   return (
     <>
       <button className="ticker" onClick={() => setSheet(n)} aria-label="주요 뉴스, 누르면 요약 보기">
-        <span className="ticker-badge"><i />뉴스</span>
+        <span className={`ticker-badge ${n.kind === 'feature' ? 'feature' : ''}`}><i />{n.kind === 'feature' ? '특징주' : '뉴스'}</span>
         <span className="ticker-text" key={idx}>
           <b>{n.title}</b>
           <small>{n.source}{n.source && n.time ? ' · ' : ''}{timeAgo(n.time)}</small>
@@ -52,7 +52,7 @@ export default function NewsTicker({ hidden }) {
         <div className="sheet-layer" onClick={() => setSheet(null)} role="dialog" aria-modal="true" aria-label="뉴스 요약">
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <div className="sheet-head">
-              <span className="ticker-badge"><i />주요 뉴스</span>
+              <span className={`ticker-badge ${sheet.kind === 'feature' ? 'feature' : ''}`}><i />{sheet.kind === 'feature' ? '특징주' : '주요 뉴스'}</span>
               <button className="icon-btn" onClick={() => setSheet(null)} aria-label="닫기"><CloseIcon /></button>
             </div>
             <h3>{sheet.title}</h3>
