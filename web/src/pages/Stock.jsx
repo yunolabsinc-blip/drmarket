@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { themesOfStock, useMarket } from '../lib/store'
-import { getDetail, getIndexChart, getLimitUps, getNews, getStockChart } from '../lib/api'
+import { getDetail, getIndexChart, getLimitUps, getNews, getStockChart, getStockEvents } from '../lib/api'
 import { fmtChange, fmtIndex, fmtPrice, fmtRate, fmtVolume, fmtWonShort, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import Chart from '../components/Chart'
 import OrderBook from '../components/OrderBook'
 import { Disclaimer, Empty, Rate, StarIcon, SubBar } from '../components/ui'
 import { NewsItems } from '../components/NewsList'
+import { EventRows } from '../components/Calendar'
 
 // MTS 방식: 분봉(1·3·5·10·30·60) + 일·주·월·년봉
 const MINUTES = [1, 3, 5, 10, 30, 60]
@@ -76,6 +77,7 @@ export default function Stock({ code }) {
   const [view, setView] = useState('chart')
   const [news, setNews] = useState([])
   const [limits, setLimits] = useState(null)
+  const [events, setEvents] = useState([])
   const [showLimits, setShowLimits] = useState(false)
   const [memo, setMemoText] = useState(memos[code] || '')
   const [saved, setSaved] = useState(false)
@@ -109,6 +111,8 @@ export default function Stock({ code }) {
     setLimits(null)
     setShowLimits(false)
     getLimitUps(code).then((d) => alive && setLimits(d)).catch(() => alive && setLimits({ up_count: null }))
+    setEvents([])
+    getStockEvents(code).then((d) => alive && setEvents(d.events || [])).catch(() => {})
     return () => { alive = false }
   }, [code])
 
@@ -199,6 +203,13 @@ export default function Stock({ code }) {
                 ))}
               </div>
             )}
+          </section>
+        )}
+
+        {events.length > 0 && (
+          <section className="section">
+            <div className="section-head"><h2>예정 일정 <small className="muted">90일</small></h2></div>
+            <EventRows showName={false} events={events.map((e) => ({ ...e, title: `${e.date.slice(5).replace('-', '/')} ${e.title}` }))} />
           </section>
         )}
 

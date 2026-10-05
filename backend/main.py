@@ -285,6 +285,12 @@ async def get_calendar(days: int = Query(60, ge=7, le=90)):
     return {"events": await market_events.fetch_calendar(days)}
 
 
+@app.get("/api/stock/{code}/events", summary="종목 일정")
+async def get_stock_events(code: str, days: int = Query(90, ge=7, le=180)):
+    """배당 기준일·주주총회·무상증자·감자·합병 등 해당 종목의 예정 일정"""
+    return {"events": await market_events.fetch_stock_events(code, days)}
+
+
 @app.get("/api/stock/{code}/limit-ups", summary="상한가 기록")
 async def get_limit_ups(code: str, years: int = Query(2, ge=1, le=3)):
     """최근 N년 상한가·하한가 마감일"""

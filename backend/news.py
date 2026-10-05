@@ -38,7 +38,8 @@ FEEDS = {
 }
 GLOBAL_RE = re.compile(r"뉴욕|나스닥|월가|연준|다우|S&P|美\s?증시|미국\s?증시|엔비디아|테슬라|애플|FOMC|달러")
 FEATURE_RE = re.compile(r"특징주")
-FOREIGN_RE = re.compile(r"중국|홍콩|美|미국|일본|대만|유럽|해외|뉴욕|나스닥|월가")   # 국내 특징주만 남기기 위한 제외어
+# 국내 특징주만 남기기 위한 제외어 (해외 증시 특징주 코너·외국 기업 기사)
+FOREIGN_RE = re.compile(r"중국|홍콩|美|미국|일본|대만|인도|印|유럽|해외|뉴욕|나스닥|월가|개장전특징주|오늘장특징주")
 
 
 def _strip_html(text: str) -> str:
@@ -168,10 +169,13 @@ async def market_news(topic: str = "market", count: int = 30) -> list[dict]:
         items = await _feeds("economy")
     elif topic == "feature":
         both = await asyncio.gather(_feeds("market"), _feeds("biz"))
-        items = [it for lst in both for it in lst if FEATURE_RE.search(it["title"]) and not FOREIGN_RE.search(it["title"])]
-        if len(items) < 8:
-            extra = await _google_rss("특징주 -중국 -홍콩 -미국 -일본", "1d")
-            items += [it for it in extra if not FOREIGN_RE.search(it["title"])]
+        domestic = lambda it: FEATURE_RE.search(it["title"]) and not FOREIGN_RE.search(it["title"])
+        items = [it for lst in both for it in lst if domestic(it)]
+        # 피드에 국내 특징주가 적으면(장외 시간) 구글 뉴스로 보충, 그래도 적으면 3일로 넓힘
+        for when in ("1d", "3d"):
+            if len(items) >= 8:
+                break
+            items += [it for it in await _google_rss("특징주", when) if domestic(it)]
     elif topic == "global":
         both = await asyncio.gather(_feeds("market"), _feeds("biz"), _feeds("economy"))
         items = [it for lst in both for it in lst if GLOBAL_RE.search(it["title"])]

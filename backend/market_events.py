@@ -135,8 +135,56 @@ async def fetch_calendar(days_ahead: int = 60) -> list[dict]:
     today = now.strftime("%Y-%m-%d")
     limit = (now + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
     ev = [e for e in ev if e["date"] and today <= e["date"] <= limit]
+    # scope: market=시장 전체 일정(휴장·공모·상장), stock=개별 종목 일정
+    for e in ev:
+        e["scope"] = "market" if e["type"] in ("holiday", "ipo", "listing") else "stock"
     order = {"holiday": 0, "ipo": 1, "listing": 2, "dividend": 3, "bonus": 4, "meeting": 5, "capdec": 6, "merger": 7}
     ev.sort(key=lambda e: (e["date"], order.get(e["type"], 9), e["title"]))
     if ev:
         _cache_set(key, ev)
+    return ev
+
+
+async def fetch_stock_events(code: str, days_ahead: int = 90) -> list[dict]:
+    """특정 종목의 예정 일정 (예탁원 정보 종목 조회)"""
+    key = f"events:{code}:{days_ahead}"
+    cached = _cache_get(key, 1800)
+    if cached:
+        return cached
+    now = datetime.utcnow() + timedelta(hours=9)
+    f_dt, t_dt = now.strftime("%Y%m%d"), (now + timedelta(days=days_ahead)).strftime("%Y%m%d")
+
+    async def ksd(path: str, tr: str, extra: dict | None = None):
+        data = await _get(f"/uapi/domestic-stock/v1/ksdinfo/{path}",
+                          {"SHT_CD": code, "CTS": "", "F_DT": f_dt, "T_DT": t_dt, **(extra or {})}, tr)
+        return (data or {}).get("output1", []) or []
+
+    div, meet, bonus, capdec, merge = await asyncio.gather(
+        ksd("dividend", "HHKDB669102C0", {"GB1": "0", "HIGH_GB": ""}),
+        ksd("sharehld-meet", "HHKDB669111C0"),
+        ksd("bonus-issue", "HHKDB669101C0"),
+        ksd("cap-dcrs", "HHKDB669106C0"),
+        ksd("merger-split", "HHKDB669104C0"),
+    )
+    ev: list[dict] = []
+    for o in div:
+        amt = _num(o.get("per_sto_divi_amt"), int)
+        ev.append({"date": _d8(o.get("record_date")), "type": "dividend", "title": f"{_s(o, 'divi_kind')}배당 기준일",
+                   "detail": f"주당 {amt:,}원" if amt else "배당금 미정"})
+    for o in meet:
+        ev.append({"date": _d8(o.get("gen_meet_dt")), "type": "meeting", "title": _s(o, "gen_meet_type") or "주주총회", "detail": _s(o, "agenda")})
+    for o in bonus:
+        ev.append({"date": _d8(o.get("record_date")), "type": "bonus", "title": "무상증자 기준일",
+                   "detail": f"1주당 {_num(o.get('fix_rate')) / 100:.2f}주 배정"})
+    for o in capdec:
+        stop = _s(o, "td_stop_dt").split("~")[0].strip()
+        ev.append({"date": _d8(stop) or _d8(o.get("record_date")), "type": "capdec", "title": _s(o, "reduce_cap_type") or "감자",
+                   "detail": f"거래정지 {_s(o, 'td_stop_dt')}" if stop else f"기준일 {_d8(o.get('record_date'))}"})
+    for o in merge:
+        stop = _s(o, "td_stop_dt").split("~")[0].strip()
+        ev.append({"date": _d8(stop) or _d8(o.get("record_date")), "type": "merger", "title": _s(o, "merge_type") or "합병·분할",
+                   "detail": f"거래정지 {_s(o, 'td_stop_dt')}" if stop else f"기준일 {_d8(o.get('record_date'))}"})
+    today = now.strftime("%Y-%m-%d")
+    ev = sorted([e for e in ev if e["date"] and e["date"] >= today], key=lambda e: e["date"])
+    _cache_set(key, ev)
     return ev
