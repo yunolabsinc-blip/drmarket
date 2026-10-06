@@ -197,11 +197,12 @@ async def get_market_indices():
 @app.get("/api/market/overview", summary="시장종합")
 async def get_market_overview():
     """투자자별 순매수(코스피·코스닥), 코스피 업종별 등락, 미국 주요 지수"""
-    kospi, kosdaq, sectors, global_ = await asyncio.gather(
+    kospi, kosdaq, sec_p, sec_q, global_ = await asyncio.gather(
         kis.fetch_investor_flow("kospi"), kis.fetch_investor_flow("kosdaq"),
-        kis.fetch_sectors(), kis.fetch_global_indices(),
+        kis.fetch_sectors("kospi"), kis.fetch_sectors("kosdaq"), kis.fetch_global_indices(),
     )
-    return {"investors": {"kospi": kospi, "kosdaq": kosdaq}, "sectors": sectors, "global": global_}
+    return {"investors": {"kospi": kospi, "kosdaq": kosdaq},
+            "sectors": sec_p, "sectors_by_market": {"kospi": sec_p, "kosdaq": sec_q}, "global": global_}
 
 
 # ──────────────────────────────────────────────

@@ -1035,31 +1035,52 @@ async def fetch_investor_flow(market: str = "kospi") -> dict | None:
 _SECTOR_CODES = {f"{n:04d}" for n in range(5, 31)} - {"0027"}
 
 
-async def fetch_sectors() -> list[dict]:
-    """코스피 업종별 등락률·거래대금"""
-    cached = _cache_get("sectors", 30)
-    if cached:
-        return cached
-    data = await _get(
-        "/uapi/domestic-stock/v1/quotations/inquire-index-category-price",
-        {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": "0001", "FID_COND_SCR_DIV_CODE": "20214",
-         "FID_MRKT_CLS_CODE": "K", "FID_BLNG_CLS_CODE": "0"},
-        "FHPUP02140000",
-    )
-    rows = []
-    for o in (data or {}).get("output2", []) or []:
-        if o.get("bstp_cls_code") not in _SECTOR_CODES:
+# 코스닥 업종지수 (KIS가 여러 묶음으로 나눠 주므로 코드 목록으로 골라 합친다)
+_KOSDAQ_SECTORS = {
+    "1006": "일반서비스", "1011": "유통", "1013": "운송·창고", "1014": "금융", "1015": "오락·문화",
+    "1019": "음식료·담배", "1020": "섬유·의류", "1021": "종이·목재", "1022": "출판·매체복제", "1023": "화학",
+    "1024": "제약", "1025": "비금속", "1026": "금속", "1027": "기계·장비", "1028": "전기·전자",
+    "1029": "의료·정밀기기", "1030": "운송장비·부품", "1031": "기타제조", "1032": "통신", "1033": "IT 서비스",
+}
+
+
+def _sector_rows(rows: list[dict], allowed) -> list[dict]:
+    out = {}
+    for o in rows or []:
+        code = o.get("bstp_cls_code")
+        if code not in allowed or code in out:
             continue
-        rows.append({
-            "code": o["bstp_cls_code"],
-            "name": o.get("hts_kor_isnm", ""),
+        name = allowed[code] if isinstance(allowed, dict) else o.get("hts_kor_isnm", "")
+        out[code] = {
+            "code": code,
+            "name": name,
             "value": _num(o.get("bstp_nmix_prpr")),
             "change_rate": _num(o.get("bstp_nmix_prdy_ctrt")),
             "trading_value": _num(o.get("acml_tr_pbmn"), int) * 1_000_000,
-        })
-    rows.sort(key=lambda r: r["change_rate"], reverse=True)
+        }
+    return sorted(out.values(), key=lambda r: r["change_rate"], reverse=True)
+
+
+async def fetch_sectors(market: str = "kospi") -> list[dict]:
+    """업종별 등락률·거래대금 (kospi / kosdaq)"""
+    key = f"sectors:{market}"
+    cached = _cache_get(key, 30)
+    if cached:
+        return cached
+    path, tr = "/uapi/domestic-stock/v1/quotations/inquire-index-category-price", "FHPUP02140000"
+    if market == "kosdaq":
+        groups = await asyncio.gather(*[
+            _get(path, {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": "1001", "FID_COND_SCR_DIV_CODE": "20214",
+                        "FID_MRKT_CLS_CODE": "Q", "FID_BLNG_CLS_CODE": b}, tr)
+            for b in ("3", "1", "7")
+        ])
+        rows = _sector_rows([o for g in groups for o in ((g or {}).get("output2") or [])], _KOSDAQ_SECTORS)
+    else:
+        data = await _get(path, {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": "0001", "FID_COND_SCR_DIV_CODE": "20214",
+                                 "FID_MRKT_CLS_CODE": "K", "FID_BLNG_CLS_CODE": "0"}, tr)
+        rows = _sector_rows((data or {}).get("output2"), _SECTOR_CODES)
     if rows:
-        _cache_set("sectors", rows)
+        _cache_set(key, rows)
     return rows
 
 

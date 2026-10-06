@@ -126,15 +126,16 @@ function Overview() {
   return (
     <>
       <IndexBoard global={data?.global} />
-      <Section title="투자자별 매매동향">
-        <div className="segmented">
-          <button className={mkt === 'kospi' ? 'on' : ''} onClick={() => setMkt('kospi')}>코스피</button>
-          <button className={mkt === 'kosdaq' ? 'on' : ''} onClick={() => setMkt('kosdaq')}>코스닥</button>
-        </div>
+      {/* 코스피/코스닥 선택은 아래 투자자 동향·업종 등락 모두에 적용 */}
+      <div className="segmented market-switch">
+        <button className={mkt === 'kospi' ? 'on' : ''} onClick={() => setMkt('kospi')}>코스피</button>
+        <button className={mkt === 'kosdaq' ? 'on' : ''} onClick={() => setMkt('kosdaq')}>코스닥</button>
+      </div>
+      <Section title={`투자자별 매매동향 (${mkt === 'kospi' ? '코스피' : '코스닥'})`}>
         {!data && !failed ? <Skeleton rows={3} /> : <InvestorFlow flow={data?.investors?.[mkt]} />}
       </Section>
-      <Section title="업종별 등락 (코스피)">
-        {!data && !failed ? <Skeleton rows={6} /> : <Sectors sectors={data?.sectors} />}
+      <Section title={`업종별 등락 (${mkt === 'kospi' ? '코스피' : '코스닥'})`}>
+        {!data && !failed ? <Skeleton rows={6} /> : <Sectors sectors={data?.sectors_by_market?.[mkt] || (mkt === 'kospi' ? data?.sectors : null)} />}
       </Section>
     </>
   )

@@ -529,3 +529,4 @@ button.cal-row:hover { background: #fafbfc; }
 .admin-fb p { font-size: 14px; margin-top: 4px; white-space: pre-wrap; word-break: break-all; }
 .wide-ghost { display: block; width: 100%; margin-top: 18px; }
 .pin-input { font-size: 22px !important; letter-spacing: 0.5em; text-align: center; }
+.market-switch { margin-top: 22px; position: sticky; top: 60px; z-index: 5; box-shadow: 0 2px 8px rgba(244, 245, 247, 0.9); }
