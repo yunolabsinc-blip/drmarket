@@ -530,3 +530,8 @@ button.cal-row:hover { background: #fafbfc; }
 .wide-ghost { display: block; width: 100%; margin-top: 18px; }
 .pin-input { font-size: 22px !important; letter-spacing: 0.5em; text-align: center; }
 .market-switch { margin-top: 22px; position: sticky; top: 60px; z-index: 5; box-shadow: 0 2px 8px rgba(244, 245, 247, 0.9); }
+.value-track { position: relative; height: 10px; border-radius: 5px; background: #f2f3f5; overflow: hidden; }
+.value-track .flow-bar { left: 0; opacity: .8; }
+.sector-row.by-value { grid-template-columns: 74px 1fr 118px; height: 40px; }
+.sector-row.by-value .sector-rate { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.sector-row.by-value .sector-rate small { font-size: 11px; color: var(--text-3); font-weight: 500; }

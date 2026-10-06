@@ -1005,7 +1005,7 @@ async def fetch_orderbook(code: str) -> dict | None:
 async def fetch_investor_flow(market: str = "kospi") -> dict | None:
     """시장별 투자자 순매수 대금(원). 최근 거래일 + 직전 5거래일 추이"""
     key = f"investor:{market}"
-    cached = _cache_get(key, 30)
+    cached = _cache_get(key, 10)
     if cached:
         return cached
     iscd, cls = ("0001", "KSP") if market == "kospi" else ("1001", "KSQ")
@@ -1064,7 +1064,7 @@ def _sector_rows(rows: list[dict], allowed) -> list[dict]:
 async def fetch_sectors(market: str = "kospi") -> list[dict]:
     """업종별 등락률·거래대금 (kospi / kosdaq)"""
     key = f"sectors:{market}"
-    cached = _cache_get(key, 30)
+    cached = _cache_get(key, 9)
     if cached:
         return cached
     path, tr = "/uapi/domestic-stock/v1/quotations/inquire-index-category-price", "FHPUP02140000"

@@ -21,11 +21,18 @@ function useOverview(active) {
     if (!active) return
     let alive = true
     let timer
-    const load = () =>
+    const load = () => {
+      const started = Date.now()
       getMarketOverview()
         .then((d) => { if (alive) { setData(d); setFailed(false) } })
         .catch(() => alive && setFailed(true))
-        .finally(() => { if (alive) timer = setTimeout(load, marketPhase().key === 'open' ? 30000 : 180000) })
+        .finally(() => {
+          if (!alive) return
+          // 요청 시작 기준으로 장중 10초 간격 (응답에 걸린 시간만큼 덜 기다림)
+          const every = marketPhase().key === 'open' ? 10000 : 180000
+          timer = setTimeout(load, Math.max(1000, every - (Date.now() - started)))
+        })
+    }
     load()
     return () => { alive = false; clearTimeout(timer) }
   }, [active])
@@ -101,22 +108,41 @@ function InvestorFlow({ flow }) {
   )
 }
 
+// 업종: 등락률 순(막대 = 등락률) / 거래대금 순(막대 = 업종 내 거래대금 비중)
 function Sectors({ sectors }) {
+  const [sort, setSort] = useState(() => { try { return localStorage.getItem('drm.sectorSort') || 'rate' } catch { return 'rate' } })
+  const change = (v) => { setSort(v); try { localStorage.setItem('drm.sectorSort', v) } catch {} }
   if (!sectors?.length) return <div className="card muted-box">업종 정보를 불러오지 못했습니다</div>
+  const list = sort === 'value' ? [...sectors].sort((a, b) => b.trading_value - a.trading_value) : sectors
   const max = Math.max(0.5, ...sectors.map((s) => Math.abs(s.change_rate)))
+  const totalValue = sectors.reduce((a, s) => a + (s.trading_value || 0), 0) || 1
+  const maxValue = Math.max(1, ...sectors.map((s) => s.trading_value || 0))
   return (
-    <div className="card sectors">
-      {sectors.map((s) => (
-        <div key={s.code} className="sector-row">
-          <span className="sector-name">{s.name}</span>
-          <span className="flow-track">
-            <i className={`flow-bar ${tone(s.change_rate)}`}
-              style={{ width: `${(Math.abs(s.change_rate) / max) * 50}%`, [s.change_rate >= 0 ? 'left' : 'right']: '50%' }} />
-          </span>
-          <b className={`sector-rate ${tone(s.change_rate)}`}>{fmtRate(s.change_rate)}</b>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="sort-toggle" role="tablist">
+        <button className={sort === 'rate' ? 'on' : ''} onClick={() => change('rate')}>등락률 순</button>
+        <button className={sort === 'value' ? 'on' : ''} onClick={() => change('value')}>거래대금 순</button>
+      </div>
+      <div className="card sectors">
+        {list.map((s) => (
+          <div key={s.code} className={`sector-row ${sort === 'value' ? 'by-value' : ''}`}>
+            <span className="sector-name">{s.name}</span>
+            {sort === 'value' ? (
+              <span className="value-track"><i className={`flow-bar ${tone(s.change_rate)}`} style={{ width: `${(s.trading_value / maxValue) * 100}%` }} /></span>
+            ) : (
+              <span className="flow-track">
+                <i className={`flow-bar ${tone(s.change_rate)}`}
+                  style={{ width: `${(Math.abs(s.change_rate) / max) * 50}%`, [s.change_rate >= 0 ? 'left' : 'right']: '50%' }} />
+              </span>
+            )}
+            <b className={`sector-rate ${tone(s.change_rate)}`}>
+              {sort === 'value' ? <><small>{fmtWonShort(s.trading_value)} · {Math.round((s.trading_value / totalValue) * 100)}%</small>{fmtRate(s.change_rate)}</> : fmtRate(s.change_rate)}
+            </b>
+          </div>
+        ))}
+      </div>
+      <p className="page-desc" style={{ marginTop: 8 }}>한국거래소 공식 업종 분류입니다. 반도체 종목(삼성전자·SK하이닉스 등)은 전기·전자 업종에 포함됩니다.</p>
+    </>
   )
 }
 
