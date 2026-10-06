@@ -547,7 +547,7 @@ async def fetch_change_rank(direction: str = "up") -> list[dict]:
             "FID_INPUT_ISCD":         "0000",
             "FID_RANK_SORT_CLS_CODE": "0" if direction == "up" else "1",
             "FID_INPUT_CNT_1":        "0",
-            "FID_PRC_CLS_CODE":       "0",
+            "FID_PRC_CLS_CODE":       "1",   # 0=저가(고가) 대비, 1=전일 종가 대비 → 일반적인 등락률
             "FID_INPUT_PRICE_1":      "",
             "FID_INPUT_PRICE_2":      "",
             "FID_VOL_CNT":            "",
@@ -580,6 +580,7 @@ async def fetch_change_rank(direction: str = "up") -> list[dict]:
             })
         # 감자·거래재개 등으로 반대 방향 종목이 섞여 나오는 경우 제외
         rows = [r for r in rows if (r["change_rate"] > 0) == (direction == "up")]
+        rows.sort(key=lambda r: r["change_rate"], reverse=(direction == "up"))
         for i, r in enumerate(rows, 1):
             r["rank"] = i
         _cache_set(cache_key, rows)

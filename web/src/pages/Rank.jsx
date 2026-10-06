@@ -45,10 +45,13 @@ export function useRanking(type) {
     : raw
   // 순위 종목을 5초 시세 조회에 포함시켜, 순서는 KRX 순위대로 두고 가격·등락률·거래대금은 통합 실시간으로
   useEffect(() => { filtered.forEach((r) => watch(r.code)) }, [filtered.map((r) => r.code).join(','), watch])
-  const rows = filtered.map((r) => {
+  const merged = filtered.map((r) => {
     const p = prices[r.code]
     return p ? { ...r, price: p.price, change_rate: p.change_rate, change: p.change, volume: p.volume || r.volume, trading_value: p.trading_value || r.trading_value } : r
   })
+  // 실시간 값을 덧입힌 뒤 화면에 보이는 숫자 기준으로 다시 정렬 (순서와 숫자가 어긋나지 않게)
+  const metric = { amount: (r) => r.trading_value || 0, volume: (r) => r.volume || 0, up: (r) => r.change_rate ?? -999, down: (r) => -(r.change_rate ?? 999) }[type]
+  const rows = metric ? [...merged].sort((a, b) => metric(b) - metric(a)) : merged
   return { rows, loading }
 }
 
