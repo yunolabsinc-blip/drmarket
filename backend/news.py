@@ -292,10 +292,14 @@ def _score(title: str, words: list[str], names: list[str]) -> int:
     return score
 
 
+# 연합뉴스 자동 시세표 등 기사로 보기 어려운 제목
+_NOISE_RE = re.compile(r"^\[표\]|시세표|상위종목\(|\[게시판\]|\[인사\]|\[부고\]")
+
+
 def _pick(items: list[dict], words: list[str], names: list[str]) -> dict | None:
     best = None
     for it in items:
-        if not _recent(it):
+        if not _recent(it) or _NOISE_RE.search(it["title"]):
             continue
         sc = _score(it["title"], words, names) - (1 if FOREIGN_RE.search(it["title"]) else 0)
         if sc < 2:
@@ -306,9 +310,46 @@ def _pick(items: list[dict], words: list[str], names: list[str]) -> dict | None:
     return best[1] if best else None
 
 
+# 시장종합 화면용: 지수·수급 (id "mkt:...")
+MARKET_KEYWORDS = {
+    "mkt:kospi": (["코스피", "유가증권시장"], []),
+    "mkt:kosdaq": (["코스닥"], []),
+    "mkt:us": (["뉴욕증시", "뉴욕 증시", "나스닥", "다우", "S&P", "美증시", "미국 증시"], []),
+    "mkt:flow": (["외국인", "기관", "개인"], ["순매수", "순매도", "매물", "수급"]),
+}
+# 업종명에서 검색어를 만들 때 보충할 단어 (KRX 업종명 그대로는 기사에 잘 안 나오는 것)
+SECTOR_EXTRA = {
+    "전기·전자": ["반도체", "전자", "디스플레이"], "증권": ["증권주", "증권사"], "금융": ["금융주", "은행주", "금융지주"],
+    "보험": ["보험주", "보험사"], "운송장비·부품": ["자동차", "조선", "자동차부품"], "운송·창고": ["해운", "항공", "물류"],
+    "기계·장비": ["기계", "로봇", "장비"], "화학": ["화학", "정유", "석유화학"], "제약": ["제약", "바이오", "신약"],
+    "의료·정밀기기": ["의료기기", "정밀기기"], "전기·가스": ["한국전력", "한전", "가스공사", "전기요금"],
+    "IT 서비스": ["IT서비스", "소프트웨어", "AI"], "오락·문화": ["엔터", "게임", "카지노", "여행"],
+    "일반서비스": ["서비스업"], "통신": ["통신사", "이동통신"], "건설": ["건설", "건설사"], "금속": ["철강", "비철금속"],
+    "출판·매체복제": ["출판", "미디어"], "기타제조": ["제조"],
+}
+
+
+_AMBIGUOUS_SECTORS = {"증권", "금융", "보험", "통신", "일반서비스", "기타제조", "유통"}
+
+
+def _keywords(tid: str):
+    if tid in THEME_KEYWORDS:
+        return THEME_KEYWORDS[tid]
+    if tid in MARKET_KEYWORDS:
+        return MARKET_KEYWORDS[tid]
+    if tid.startswith("sector:"):
+        name = tid[7:][:20]
+        # 흔히 다른 뜻으로 쓰이는 업종명은 "증권주"처럼 보충 단어로만 찾는다
+        base = [] if name in _AMBIGUOUS_SECTORS else [w for w in re.split(r"[·\s]", name) if len(w) >= 2]
+        words = base + SECTOR_EXTRA.get(name, [])
+        return (list(dict.fromkeys(words)), []) if words else None
+    return None
+
+
 async def theme_news(ids: list[str]) -> dict:
-    """{theme_id: 기사 1건 또는 None}. 언론사 피드에서 먼저 찾고, 없으면 구글 뉴스로 보충 (테마별 10분 저장)"""
-    ids = [i for i in ids if i in THEME_KEYWORDS][:40]
+    """{id: 기사 1건 또는 None}. id = 테마 id / "mkt:kospi" 등 / "sector:업종명".
+    언론사 피드에서 먼저 찾고, 없으면 구글 뉴스로 보충 (id별 10분 저장)"""
+    ids = [i for i in dict.fromkeys(ids) if _keywords(i)][:60]
     pools = await asyncio.gather(_feeds("market"), _feeds("biz"), _feeds("economy"))
     pool = _dedupe([it for lst in pools for it in lst])
     result, missing = {}, []
@@ -317,7 +358,8 @@ async def theme_news(ids: list[str]) -> dict:
         if hit and time.monotonic() - hit[0] < 600:
             result[tid] = hit[1][0] if hit[1] else None
             continue
-        it = _pick(pool, *THEME_KEYWORDS[tid])
+        words, names = _keywords(tid)
+        it = _pick(pool, words, names)
         if it:
             result[tid] = it
             _cache[f"theme:{tid}"] = (time.monotonic(), [it])
@@ -325,11 +367,14 @@ async def theme_news(ids: list[str]) -> dict:
             missing.append(tid)
 
     async def fill(tid: str):
-        words, names = THEME_KEYWORDS[tid]
-        items = await _google_rss(f"{words[0]}주 OR {words[0]} 관련주 OR {names[0]}", "1d")
+        words, names = _keywords(tid)
+        q = f"{words[0]}주 OR {words[0]} 관련주" + (f" OR {names[0]}" if names and not tid.startswith("mkt:") else "")
+        if tid.startswith("mkt:"):
+            q = " OR ".join(words[:3])
+        items = await _google_rss(q, "1d")
         it = _pick(items, words, names)
         result[tid] = it
         _cache[f"theme:{tid}"] = (time.monotonic(), [it] if it else [])
 
-    await asyncio.gather(*[fill(t) for t in missing])
+    await asyncio.gather(*[fill(t) for t in missing[:20]])
     return result

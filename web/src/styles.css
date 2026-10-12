@@ -554,3 +554,18 @@ button.cal-row:hover { background: #fafbfc; }
 .theme-news.large .tn-body { padding: 0 12px 10px 30px; }
 .theme-news.large .tn-meta { font-size: 12px; }
 .theme-news.large .tn-link { font-size: 12.5px; padding: 6px 12px; }
+
+/* ───────── 시장종합 기사 줄 ───────── */
+.market-headlines { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.market-headlines .theme-news.large { margin: 0; }
+.tn-label { flex: none; font-size: 11px; font-weight: 700; color: var(--brand); background: var(--brand-soft); padding: 2px 7px; border-radius: 6px; margin-right: 2px; }
+.theme-news.open .tn-label { background: var(--card); }
+.sector-item + .sector-item { border-top: 1px solid #f6f7f9; }
+.sector-btn { width: 100%; display: block; text-align: left; }
+.sector-row { grid-template-columns: 74px 1fr 84px 12px !important; }
+.sector-row.by-value { grid-template-columns: 74px 1fr 118px 12px !important; }
+.sector-caret { font-size: 10px; color: var(--text-3); text-align: right; }
+.sector-item.open .sector-row { color: var(--brand); }
+.sector-news { padding: 0 0 8px; }
+.sector-news .theme-news { margin: 0; }
+.sector-news-empty { font-size: 12px; color: var(--text-3); padding: 2px 4px 10px; }

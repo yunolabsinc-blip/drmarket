@@ -7,6 +7,9 @@ import { Sparkline } from '../components/Chart'
 import MarketNews from '../components/NewsList'
 import Calendar from '../components/Calendar'
 import { Disclaimer, Section, Skeleton, StatusLine } from '../components/ui'
+import { ThemeHeadline } from '../components/ThemeGrid'
+import { useKeyNews } from '../lib/themeNews'
+import { track } from '../lib/analytics'
 
 const TABS = [
   { id: 'overview', label: '종합', path: '/market' },
@@ -66,11 +69,40 @@ function IndexBoard({ global }) {
   )
 }
 
+// 지수 카드 아래 오늘의 시장 기사 (누르면 펼침 → 원문 보기)
+const MARKET_NEWS = [
+  { id: 'mkt:kospi', label: '코스피' },
+  { id: 'mkt:kosdaq', label: '코스닥' },
+  { id: 'mkt:us', label: '해외' },
+]
+function MarketHeadlines() {
+  const news = useKeyNews(MARKET_NEWS.map((m) => m.id))
+  const list = MARKET_NEWS.filter((m) => news[m.id])
+  if (!list.length) return null
+  // 같은 기사가 두 곳에 잡히면 한 번만
+  const seen = new Set()
+  return (
+    <div className="market-headlines">
+      {list.filter((m) => !seen.has(news[m.id].link) && seen.add(news[m.id].link)).map((m) => (
+        <ThemeHeadline key={m.id} item={news[m.id]} label={m.label} large />
+      ))}
+    </div>
+  )
+}
+
 const INVESTORS = [
   { key: 'individual', label: '개인' },
   { key: 'foreign', label: '외국인' },
   { key: 'institution', label: '기관' },
 ]
+
+function FlowHeadline() {
+  const news = useKeyNews(['mkt:flow', 'mkt:kospi'])
+  const item = news['mkt:flow']
+  // 위 코스피 기사와 같으면 겹쳐 보이지 않게 생략
+  if (!item || item.link === news['mkt:kospi']?.link) return null
+  return <div style={{ marginBottom: 8 }}><ThemeHeadline item={item} label="수급" large /></div>
+}
 
 function InvestorFlow({ flow }) {
   if (!flow) return <div className="card muted-box">투자자 동향을 불러오지 못했습니다</div>
@@ -109,7 +141,28 @@ function InvestorFlow({ flow }) {
 }
 
 // 업종: 등락률 순(막대 = 등락률) / 거래대금 순(막대 = 업종 내 거래대금 비중)
+// 업종 한 줄: 누르면 아래에 그 업종의 오늘 기사 (없으면 안내)
+function SectorItem({ name, open, onToggle, children }) {
+  return (
+    <div className={`sector-item ${open ? 'open' : ''}`}>
+      <button className="sector-btn" onClick={onToggle} aria-expanded={open}>{children}</button>
+      {open && <SectorNews name={name} />}
+    </div>
+  )
+}
+
+function SectorNews({ name }) {
+  const id = `sector:${name}`
+  const news = useKeyNews([id])
+  const item = news[id]
+  if (item === undefined) return <p className="sector-news-empty">기사 찾는 중…</p>
+  return item
+    ? <div className="sector-news"><ThemeHeadline item={item} defaultOpen /></div>
+    : <p className="sector-news-empty">오늘 이 업종의 주요 기사가 아직 없습니다</p>
+}
+
 function Sectors({ sectors }) {
+  const [openSector, setOpenSector] = useState(null)
   const [sort, setSort] = useState(() => { try { return localStorage.getItem('drm.sectorSort') || 'rate' } catch { return 'rate' } })
   const change = (v) => { setSort(v); try { localStorage.setItem('drm.sectorSort', v) } catch {} }
   if (!sectors?.length) return <div className="card muted-box">업종 정보를 불러오지 못했습니다</div>
@@ -125,7 +178,8 @@ function Sectors({ sectors }) {
       </div>
       <div className="card sectors">
         {list.map((s) => (
-          <div key={s.code} className={`sector-row ${sort === 'value' ? 'by-value' : ''}`}>
+          <SectorItem key={s.code} name={s.name} open={openSector === s.code} onToggle={() => { if (openSector !== s.code) track('news_open'); setOpenSector(openSector === s.code ? null : s.code) }}>
+          <div className={`sector-row ${sort === 'value' ? 'by-value' : ''}`}>
             <span className="sector-name">{s.name}</span>
             {sort === 'value' ? (
               <span className="value-track"><i className={`flow-bar ${tone(s.change_rate)}`} style={{ width: `${(s.trading_value / maxValue) * 100}%` }} /></span>
@@ -138,7 +192,9 @@ function Sectors({ sectors }) {
             <b className={`sector-rate ${tone(s.change_rate)}`}>
               {sort === 'value' ? <><small>{fmtWonShort(s.trading_value)} · {Math.round((s.trading_value / totalValue) * 100)}%</small>{fmtRate(s.change_rate)}</> : fmtRate(s.change_rate)}
             </b>
+            <span className="sector-caret" aria-hidden="true">{openSector === s.code ? '▴' : '▾'}</span>
           </div>
+          </SectorItem>
         ))}
       </div>
       <p className="page-desc" style={{ marginTop: 8 }}>한국거래소 공식 업종 분류입니다. 반도체 종목(삼성전자·SK하이닉스 등)은 전기·전자 업종에 포함됩니다.</p>
@@ -152,12 +208,14 @@ function Overview() {
   return (
     <>
       <IndexBoard global={data?.global} />
+      <MarketHeadlines />
       {/* 코스피/코스닥 선택은 아래 투자자 동향·업종 등락 모두에 적용 */}
       <div className="segmented market-switch">
         <button className={mkt === 'kospi' ? 'on' : ''} onClick={() => setMkt('kospi')}>코스피</button>
         <button className={mkt === 'kosdaq' ? 'on' : ''} onClick={() => setMkt('kosdaq')}>코스닥</button>
       </div>
       <Section title={`투자자별 매매동향 (${mkt === 'kospi' ? '코스피' : '코스닥'})`}>
+        <FlowHeadline />
         {!data && !failed ? <Skeleton rows={3} /> : <InvestorFlow flow={data?.investors?.[mkt]} />}
       </Section>
       <Section title={`업종별 등락 (${mkt === 'kospi' ? '코스피' : '코스닥'})`}>

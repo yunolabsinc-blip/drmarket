@@ -35,15 +35,15 @@ export function SortToggle({ value, onChange }) {
 
 // 테마 이름 아래 오늘의 주요 기사 한 줄. 누르면 기사 원문으로 (타일 이동은 막음)
 // 누르면 줄이 펴지며 제목 전체·매체·시각과 "원문 보기"가 나온다 (타일 이동은 막음)
-export function ThemeHeadline({ item, large }) {
-  const [open, setOpen] = useState(false)
+export function ThemeHeadline({ item, large, label, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
   if (!item) return null
   const stop = (e) => e.stopPropagation()
   return (
     <div className={`theme-news ${large ? 'large' : ''} ${open ? 'open' : ''}`} onClick={stop}>
       <button className="tn-row" aria-expanded={open}
         onClick={() => { if (!open) track('news_open'); setOpen(!open) }}>
-        <span className="tn-icon" aria-hidden="true">📰</span>
+        {label ? <span className="tn-label">{label}</span> : <span className="tn-icon" aria-hidden="true">📰</span>}
         <span className="tn-text">{item.title}</span>
         <span className="tn-caret" aria-hidden="true">{open ? '▴' : '▾'}</span>
       </button>
