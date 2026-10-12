@@ -283,6 +283,11 @@ async def get_market_news(topic: str = Query("market", description="market / fea
     return {"topic": topic, "fallback": fallback, "news": items}
 
 
+@app.get("/api/news/themes", summary="테마별 오늘의 주요 기사")
+async def get_theme_news(ids: str = Query("", description="쉼표 구분 테마 id")):
+    return {"news": await news.theme_news([i.strip() for i in ids.split(",") if i.strip()])}
+
+
 @app.get("/api/news/headlines", summary="주요 뉴스")
 async def get_headlines(count: int = Query(5, ge=1, le=10)):
     return {"news": await news.headlines(count)}

@@ -234,3 +234,102 @@ async def headlines(count: int = 5) -> list[dict]:
             if len(out) >= count:
                 break
     return out
+
+
+# ──────────────────────────────────────────────
+# 테마별 오늘의 주요 기사 (테마 타일의 한 줄 요약)
+# ──────────────────────────────────────────────
+# 테마 id → (검색어, 대표 종목명). 검색어 첫 번째가 대표. web/src/data/themes.json 의 id 와 맞춘다.
+THEME_KEYWORDS = {
+    "semiconductor": (["반도체", "파운드리", "D램", "낸드", "메모리"], ["삼성전자", "SK하이닉스", "하이닉스", "삼전닉스", "한미반도체", "DB하이텍", "리노공업"]),
+    "hbm": (["HBM", "AI반도체", "AI 반도체", "고대역폭"], ["SK하이닉스", "하이닉스", "한미반도체", "이수페타시스", "테크윙", "하나마이크론"]),
+    "battery": (["2차전지", "이차전지", "배터리", "양극재", "리튬", "ESS"], ["LG에너지솔루션", "LG엔솔", "삼성SDI", "에코프로", "포스코퓨처엠", "엘앤에프"]),
+    "shipbuilding": (["조선", "LNG선", "선박"], ["HD한국조선해양", "HD현대중공업", "한화오션", "삼성중공업", "HJ중공업"]),
+    "defense": (["방산", "K-방산", "방위산업", "무기 수출"], ["한화에어로스페이스", "한화에어로", "LIG넥스원", "현대로템", "한국항공우주", "KAI", "풍산"]),
+    "nuclear": (["원전", "원자력", "SMR"], ["두산에너빌리티", "한전기술", "한전KPS", "한수원", "비에이치아이"]),
+    "power": (["전력기기", "변압기", "전선", "전력망", "송전", "전력 인프라"], ["LS ELECTRIC", "LS일렉트릭", "HD현대일렉트릭", "효성중공업", "대한전선", "LS전선", "제룡전기"]),
+    "bio": (["바이오", "신약", "CDMO", "임상"], ["삼성바이오로직스", "삼성바이오", "셀트리온", "알테오젠", "유한양행", "HLB", "리가켐", "SK바이오팜"]),
+    "obesity": (["비만", "GLP-1", "위고비", "마운자로"], ["한미약품", "펩트론", "디앤디파마텍", "인벤티지랩"]),
+    "robot": (["로봇", "휴머노이드"], ["레인보우로보틱스", "두산로보틱스", "로보티즈", "유진로봇", "에스피지"]),
+    "space": (["우주", "위성", "발사체", "항공우주"], ["한국항공우주", "쎄트렉아이", "인텔리안테크", "AP위성", "한화에어로스페이스"]),
+    "platform": (["플랫폼", "포털", "핀테크"], ["네이버", "NAVER", "카카오", "카카오뱅크", "카카오페이"]),
+    "game": (["게임", "신작"], ["크래프톤", "엔씨소프트", "넷마블", "펄어비스", "시프트업", "카카오게임즈"]),
+    "entertainment": (["엔터", "K팝", "K-팝", "아이돌", "케이팝"], ["하이브", "JYP", "에스엠", "SM엔터", "YG엔터"]),
+    "auto": (["자동차", "완성차", "전기차"], ["현대차", "기아", "현대모비스", "HL만도", "현대위아"]),
+    "finance": (["밸류업", "은행주", "금융주", "금융지주", "주주환원"], ["KB금융", "신한지주", "하나금융", "우리금융", "메리츠금융", "삼성생명"]),
+    "cosmetics": (["화장품", "K뷰티", "K-뷰티"], ["아모레퍼시픽", "LG생활건강", "코스맥스", "한국콜마", "실리콘투", "에이피알"]),
+    "hydrogen": (["수소", "연료전지"], ["두산퓨얼셀", "효성첨단소재", "일진하이솔루스", "범한퓨얼셀"]),
+    "steel": (["철강", "제철", "H형강"], ["POSCO홀딩스", "포스코홀딩스", "현대제철", "동국제강", "세아베스틸"]),
+    "construction": (["건설", "주택", "분양", "플랜트"], ["현대건설", "삼성물산", "GS건설", "DL이앤씨", "대우건설"]),
+    "telecom": (["통신", "5G", "6G"], ["SK텔레콤", "SKT", "KT", "LG유플러스"]),
+}
+
+
+def _recent(it: dict, hours: int = 24) -> bool:
+    try:
+        return datetime.now(KST) - datetime.fromisoformat(it["time"]) < timedelta(hours=hours)
+    except Exception:
+        return False
+
+
+def _score(title: str, words: list[str], names: list[str]) -> int:
+    """테마 관련도 점수. 검색어가 없으면 0. 2점 이상만 채택"""
+    kw = [w for w in words if w in title]
+    nm = [n for n in names if n in title]
+    if not kw and not nm:
+        return 0
+    score = 1
+    if nm:
+        score += 2                                                       # 대표 종목이 제목에 있음
+    if kw and any(re.search(re.escape(w) + r"(주|株|관련주|업종|섹터)", title) for w in kw):
+        score += 2                                                       # "방산주", "조선株" 같은 투자 관점 표현
+    if kw and any(title.find(w) <= 12 for w in kw):
+        score += 1                                                       # 제목 앞부분에 검색어
+    if "특징주" in title:
+        score += 1
+    if kw and nm:
+        score += 1
+    return score
+
+
+def _pick(items: list[dict], words: list[str], names: list[str]) -> dict | None:
+    best = None
+    for it in items:
+        if not _recent(it):
+            continue
+        sc = _score(it["title"], words, names) - (1 if FOREIGN_RE.search(it["title"]) else 0)
+        if sc < 2:
+            continue
+        key = (sc, it["time"])
+        if best is None or key > best[0]:
+            best = (key, it)
+    return best[1] if best else None
+
+
+async def theme_news(ids: list[str]) -> dict:
+    """{theme_id: 기사 1건 또는 None}. 언론사 피드에서 먼저 찾고, 없으면 구글 뉴스로 보충 (테마별 10분 저장)"""
+    ids = [i for i in ids if i in THEME_KEYWORDS][:40]
+    pools = await asyncio.gather(_feeds("market"), _feeds("biz"), _feeds("economy"))
+    pool = _dedupe([it for lst in pools for it in lst])
+    result, missing = {}, []
+    for tid in ids:
+        hit = _cache.get(f"theme:{tid}")
+        if hit and time.monotonic() - hit[0] < 600:
+            result[tid] = hit[1][0] if hit[1] else None
+            continue
+        it = _pick(pool, *THEME_KEYWORDS[tid])
+        if it:
+            result[tid] = it
+            _cache[f"theme:{tid}"] = (time.monotonic(), [it])
+        else:
+            missing.append(tid)
+
+    async def fill(tid: str):
+        words, names = THEME_KEYWORDS[tid]
+        items = await _google_rss(f"{words[0]}주 OR {words[0]} 관련주 OR {names[0]}", "1d")
+        it = _pick(items, words, names)
+        result[tid] = it
+        _cache[f"theme:{tid}"] = (time.monotonic(), [it] if it else [])
+
+    await asyncio.gather(*[fill(t) for t in missing])
+    return result

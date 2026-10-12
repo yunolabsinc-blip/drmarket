@@ -2,6 +2,7 @@ import { useMarket } from '../lib/store'
 import { fmtPrice, fmtRate, fmtWonShort, tone } from '../lib/format'
 import { go } from '../lib/router'
 import { track } from '../lib/analytics'
+import { useThemeNews } from '../lib/themeNews'
 
 export const SORTS = [
   { id: 'value', label: '거래대금 집중' },
@@ -30,7 +31,20 @@ export function SortToggle({ value, onChange }) {
   )
 }
 
-function ThemeTile({ theme, rank, sort, total }) {
+// 테마 이름 아래 오늘의 주요 기사 한 줄. 누르면 기사 원문으로 (타일 이동은 막음)
+export function ThemeHeadline({ item, large }) {
+  if (!item) return null
+  return (
+    <a className={`theme-news ${large ? 'large' : ''}`} href={item.link} target="_blank" rel="noopener noreferrer"
+      onClick={(e) => { e.stopPropagation(); track('news_link') }} title={`${item.title} · ${item.source}`}>
+      <span className="tn-icon" aria-hidden="true">📰</span>
+      <span className="tn-text">{item.title}</span>
+      {large && <small>{item.source} ↗</small>}
+    </a>
+  )
+}
+
+function ThemeTile({ theme, rank, sort, total, news }) {
   const { flash } = useMarket()
   // 거래대금 모드에서는 돈이 몰린 종목부터, 상승률 모드에서는 많이 오른 종목부터
   const stocks = [...theme.stocks]
@@ -47,6 +61,7 @@ function ThemeTile({ theme, rank, sort, total }) {
         <b className="tile-name">{theme.name}</b>
         <span className={`tile-rate ${tone(theme.avg)}`}>{fmtRate(theme.avg)}</span>
       </header>
+      <ThemeHeadline item={news} />
       <div className="tile-value">
         <span>거래대금 <b>{fmtWonShort(theme.value)}</b></span>
         {total > 0 && <span className="tile-share" title="코스피·코스닥 전체 거래대금 대비">시장 {share.toFixed(1)}%</span>}
@@ -74,13 +89,14 @@ function ThemeTile({ theme, rank, sort, total }) {
 
 export default function ThemeGrid({ sort, limit }) {
   const { list, total, ready } = useSortedThemes(sort)
+  const themeNews = useThemeNews()
   if (!ready) {
     return <div className="tile-grid">{Array.from({ length: limit || 6 }).map((_, i) => <div key={i} className="tile skeleton tile-skel" />)}</div>
   }
   return (
     <div className="tile-grid">
       {list.slice(0, limit || list.length).map((t, i) => (
-        <ThemeTile key={t.id} theme={t} rank={i + 1} sort={sort} total={total} />
+        <ThemeTile key={t.id} theme={t} rank={i + 1} sort={sort} total={total} news={themeNews[t.id]} />
       ))}
     </div>
   )

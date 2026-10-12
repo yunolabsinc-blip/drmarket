@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMarket } from '../lib/store'
-import ThemeGrid, { SortToggle } from '../components/ThemeGrid'
+import ThemeGrid, { SortToggle, ThemeHeadline } from '../components/ThemeGrid'
+import { useThemeNews } from '../lib/themeNews'
 import { fmtWonShort } from '../lib/format'
 import { Disclaimer, Empty, RatePill, StatusLine, StockRow, SubBar } from '../components/ui'
 
@@ -23,6 +24,7 @@ export default function Themes() {
 
 export function ThemeDetail({ id }) {
   const { themes } = useMarket()
+  const themeNews = useThemeNews()
   const theme = themes.find((t) => t.id === id)
   if (!theme) {
     return (
@@ -38,6 +40,7 @@ export function ThemeDetail({ id }) {
       <main className="page">
         <div className="hero">
           <span className="hero-label">{theme.desc}</span>
+          <ThemeHeadline item={themeNews[theme.id]} large />
           <div className="hero-row">
             <RatePill value={theme.avg} />
             <span className="hero-meta">거래대금 {fmtWonShort(theme.value)} · 상승 {theme.up} · 하락 {theme.down}</span>
