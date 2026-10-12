@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useMarket } from '../lib/store'
+import { timeAgo } from './NewsList'
 import { fmtPrice, fmtRate, fmtWonShort, tone } from '../lib/format'
 import { go } from '../lib/router'
 import { track } from '../lib/analytics'
@@ -32,15 +34,27 @@ export function SortToggle({ value, onChange }) {
 }
 
 // 테마 이름 아래 오늘의 주요 기사 한 줄. 누르면 기사 원문으로 (타일 이동은 막음)
+// 누르면 줄이 펴지며 제목 전체·매체·시각과 "원문 보기"가 나온다 (타일 이동은 막음)
 export function ThemeHeadline({ item, large }) {
+  const [open, setOpen] = useState(false)
   if (!item) return null
+  const stop = (e) => e.stopPropagation()
   return (
-    <a className={`theme-news ${large ? 'large' : ''}`} href={item.link} target="_blank" rel="noopener noreferrer"
-      onClick={(e) => { e.stopPropagation(); track('news_link') }} title={`${item.title} · ${item.source}`}>
-      <span className="tn-icon" aria-hidden="true">📰</span>
-      <span className="tn-text">{item.title}</span>
-      {large && <small>{item.source} ↗</small>}
-    </a>
+    <div className={`theme-news ${large ? 'large' : ''} ${open ? 'open' : ''}`} onClick={stop}>
+      <button className="tn-row" aria-expanded={open}
+        onClick={() => { if (!open) track('news_open'); setOpen(!open) }}>
+        <span className="tn-icon" aria-hidden="true">📰</span>
+        <span className="tn-text">{item.title}</span>
+        <span className="tn-caret" aria-hidden="true">{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div className="tn-body">
+          <span className="tn-meta">{item.source}{item.source && item.time ? ' · ' : ''}{timeAgo(item.time)}</span>
+          <a className="tn-link" href={item.link} target="_blank" rel="noopener noreferrer"
+            onClick={(e) => { stop(e); track('news_link') }}>원문 보기 ↗</a>
+        </div>
+      )}
+    </div>
   )
 }
 
