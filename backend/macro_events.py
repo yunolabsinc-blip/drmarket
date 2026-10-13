@@ -23,6 +23,7 @@ import httpx
 import json
 
 from kis_client import _cache_get, _cache_set, _redis
+import dart
 
 logger = logging.getLogger(__name__)
 KST = timezone(timedelta(hours=9))
@@ -281,7 +282,7 @@ async def fetch_macro(days_ahead: int = 60) -> list[dict]:
     cached = _cache_get(key, 3 * 3600)
     if cached:
         return cached
-    rkey = f"drmarket:macro:{days_ahead}:{datetime.now(KST).strftime('%Y%m%d')}"
+    rkey = f"drmarket:macro:v2:{days_ahead}:{datetime.now(KST).strftime('%Y%m%d')}:{'dart' if dart.enabled() else 'kind'}"
     shared = await _redis("GET", rkey)
     if shared:
         try:
@@ -290,7 +291,9 @@ async def fetch_macro(days_ahead: int = 60) -> list[dict]:
             return ev
         except Exception:
             pass
-    parts = await asyncio.gather(_fomc(), _bok_rate(), _bok_stats(), _bea(), _kind_ir(days_ahead), _us_earnings(min(days_ahead, 45)),
+    # 국내 실적·IR: DART 키가 있으면 DART(운영), 없으면 KIND(로컬에서만 동작)
+    domestic = dart.fetch_ir_events(days_ahead) if dart.enabled() else _kind_ir(days_ahead)
+    parts = await asyncio.gather(_fomc(), _bok_rate(), _bok_stats(), _bea(), domestic, _us_earnings(min(days_ahead, 45)),
                                  return_exceptions=True)
     ev = [e for p in parts if isinstance(p, list) for e in p] + _bls() + _rules(days_ahead) + _events()
     today = datetime.now(KST).date().isoformat()

@@ -171,7 +171,7 @@ export default function Calendar() {
           <EventRows events={evs} />
         </section>
       ))}
-      <p className="page-desc" style={{ marginTop: 10 }}>출처: 미국 연준·BLS·BEA, 한국은행, 산업통상자원부, 한국예탁결제원·한국거래소(한국투자증권 Open API), Nasdaq(미국 실적). 미국 지표는 미국 날짜 기준이며 한국 시각으로는 밤~새벽입니다. 일정은 각 기관 사정으로 바뀔 수 있습니다.</p>
+      <p className="page-desc" style={{ marginTop: 10 }}>출처: 미국 연준·BLS·BEA, 한국은행, 산업통상자원부, 한국예탁결제원·한국거래소(한국투자증권 Open API), 금융감독원 DART(국내 실적·IR 공시), Nasdaq(미국 실적). 미국 지표는 미국 날짜 기준이며 한국 시각으로는 밤~새벽입니다. 일정은 각 기관 사정으로 바뀔 수 있습니다.</p>
     </>
   )
 }
