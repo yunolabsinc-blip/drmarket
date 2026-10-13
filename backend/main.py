@@ -22,6 +22,7 @@ from fastapi.responses import HTMLResponse
 
 import kis_client as kis
 import market_events
+import macro_events
 import news
 import stats
 
@@ -295,8 +296,12 @@ async def get_headlines(count: int = Query(5, ge=1, le=10)):
 
 @app.get("/api/market/calendar", summary="시장 일정")
 async def get_calendar(days: int = Query(60, ge=7, le=90)):
-    """휴장·공모주 청약/상장·배당 기준일·주주총회·무상증자·감자·합병/분할"""
-    return {"events": await market_events.fetch_calendar(days)}
+    """휴장·공모주·배당·주총·무상증자·감자·합병 + 경제지표·금리 결정·실적 발표·만기·주요 행사"""
+    ksd, macro = await asyncio.gather(market_events.fetch_calendar(days), macro_events.fetch_macro(days))
+    order = {"holiday": 0, "rate": 1, "macro": 2, "expiry": 3, "event": 4, "ipo": 5, "listing": 6, "earnings": 7,
+             "us_earnings": 8, "ir": 9, "dividend": 10, "bonus": 11, "meeting": 12, "capdec": 13, "merger": 14}
+    events = sorted(ksd + macro, key=lambda e: (e["date"], order.get(e["type"], 99), e["title"]))
+    return {"events": events}
 
 
 @app.get("/api/stock/{code}/events", summary="종목 일정")

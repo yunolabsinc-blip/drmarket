@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getCalendar } from '../lib/api'
 import { go } from '../lib/router'
+import { useMarket } from '../lib/store'
 import { Skeleton } from './ui'
 import { track } from '../lib/analytics'
 
 export const EVENT_TYPES = {
   holiday: { label: '휴장', cls: 'ev-holiday', dot: '#f04452' },
+  rate: { label: '금리', cls: 'ev-rate', dot: '#dc2626' },
+  macro: { label: '경제지표', cls: 'ev-macro', dot: '#0891b2' },
+  expiry: { label: '만기', cls: 'ev-expiry', dot: '#ea580c' },
+  event: { label: '행사', cls: 'ev-event', dot: '#db2777' },
+  earnings: { label: '실적', cls: 'ev-earnings', dot: '#16a34a' },
+  us_earnings: { label: '美실적', cls: 'ev-earnings', dot: '#16a34a' },
+  ir: { label: 'IR', cls: 'ev-meeting', dot: '#3182f6' },
   ipo: { label: '공모청약', cls: 'ev-ipo', dot: '#4b3bf5' },
   listing: { label: '신규상장', cls: 'ev-listing', dot: '#059669' },
   dividend: { label: '배당', cls: 'ev-dividend', dot: '#b45309' },
@@ -16,7 +24,9 @@ export const EVENT_TYPES = {
 }
 const SCOPES = [
   { id: 'all', label: '전체' },
-  { id: 'market', label: '시장' },
+  { id: 'economy', label: '경제·행사' },
+  { id: 'earnings', label: '실적' },
+  { id: 'market', label: '공모·휴장' },
   { id: 'stock', label: '종목' },
 ]
 const DAYS = ['일', '월', '화', '수', '목', '금', '토']
@@ -27,14 +37,18 @@ const fmtDay = (s) => {
 }
 
 export function EventRows({ events, showName = true }) {
+  const { stockList } = useMarket()
+  // KIND처럼 회사명만 오는 일정은 종목 목록에서 코드를 찾아 연결
+  const byName = useMemo(() => new Map(stockList.map(([code, name]) => [name, code])), [stockList])
   return (
     <div className="card list">
       {events.map((e, i) => {
         const t = EVENT_TYPES[e.type] || { label: e.type, cls: '' }
-        const clickable = showName && e.code && /^\d{6}$/.test(e.code)
+        const code = e.code || (e.name && byName.get(e.name))
+        const clickable = showName && code && /^\d{6}$/.test(code)
         const Row = clickable ? 'button' : 'div'
         return (
-          <Row key={i} className="cal-row" onClick={clickable ? () => go(`/stock/${e.code}`) : undefined}>
+          <Row key={i} className="cal-row" onClick={clickable ? () => go(`/stock/${code}`) : undefined}>
             <span className={`ev-type ${t.cls}`}>{t.label}</span>
             <span className="cal-main">
               <b>{e.title}</b>
@@ -157,7 +171,7 @@ export default function Calendar() {
           <EventRows events={evs} />
         </section>
       ))}
-      <p className="page-desc" style={{ marginTop: 10 }}>출처: 한국예탁결제원·한국거래소 (한국투자증권 Open API). 시장 = 휴장·공모주 청약·신규 상장, 종목 = 배당·주총·무상증자·감자·합병. 실적 발표 등 기업 자체 일정은 포함되지 않습니다.</p>
+      <p className="page-desc" style={{ marginTop: 10 }}>출처: 미국 연준·BLS·BEA, 한국은행, 산업통상자원부, 한국예탁결제원·한국거래소(한국투자증권 Open API), Nasdaq(미국 실적). 미국 지표는 미국 날짜 기준이며 한국 시각으로는 밤~새벽입니다. 일정은 각 기관 사정으로 바뀔 수 있습니다.</p>
     </>
   )
 }
