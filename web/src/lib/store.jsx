@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import THEMES from '../data/themes.json'
-import { getBatchPrices, getHealth, getIndices } from './api'
+import { getBatchPrices, getHealth, getIndices, getStocks } from './api'
 import { marketPhase } from './format'
 import { buildMatcher } from './stocks'
 
@@ -54,9 +54,14 @@ export function MarketProvider({ children }) {
   useEffect(() => save('drm.memos', memos), [memos])
 
   useEffect(() => {
-    fetch('./stocks.json', { cache: 'no-cache' })   // 매일 갱신되는 목록이라 캐시 대신 확인 후 사용
+    // 사이트에 함께 배포된 목록으로 먼저 띄우고, 서버의 최신 목록(신규 상장·폐지·사명 변경 반영)으로 바꿈
+    let fresh = false
+    fetch('./stocks.json', { cache: 'no-cache' })
       .then((r) => r.json())
-      .then(setStockList)
+      .then((list) => { if (!fresh) setStockList(list) })
+      .catch(() => {})
+    getStocks()
+      .then((list) => { if (Array.isArray(list) && list.length > 1000) { fresh = true; setStockList(list) } })
       .catch(() => {})
   }, [])
 

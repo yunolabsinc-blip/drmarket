@@ -18,12 +18,14 @@ import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request, Header
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 import kis_client as kis
 import market_events
 import macro_events
 import news
+import ranking
+import stock_master
 import stats
 
 # ──────────────────────────────────────────────
@@ -316,6 +318,15 @@ async def get_limit_ups(code: str, years: int = Query(2, ge=1, le=3)):
     return await market_events.fetch_limit_ups(code, years)
 
 
+@app.get("/api/stocks", summary="검색용 주식 목록")
+async def get_stocks():
+    """[[코드, 종목명, 시장(P/Q)], ...] — 신규 상장·폐지·사명 변경 반영 (3시간마다 갱신)"""
+    stocks = await stock_master.get_stocks()
+    if not stocks:
+        raise HTTPException(503, "종목 목록을 불러오지 못했습니다.")
+    return JSONResponse(stocks, headers={"Cache-Control": "public, max-age=1800"})
+
+
 # ──────────────────────────────────────────────
 # 랭킹
 # ──────────────────────────────────────────────
@@ -324,6 +335,8 @@ async def ranking_amount(
     market: str = Query("all", description="all / kospi / kosdaq"),
 ):
     """거래대금 기준 상위 종목"""
+    if market == "all" and (r := await ranking.get_ranking("amount")):
+        return r
     m = "J" if market == "kospi" else ("Q" if market == "kosdaq" else "all")
     return {"ranking": await kis.fetch_volume_rank(m, "amount")}
 
@@ -333,6 +346,8 @@ async def ranking_volume(
     market: str = Query("all", description="all / kospi / kosdaq"),
 ):
     """거래량 기준 상위 종목"""
+    if market == "all" and (r := await ranking.get_ranking("volume")):
+        return r
     m = "J" if market == "kospi" else ("Q" if market == "kosdaq" else "all")
     return {"ranking": await kis.fetch_volume_rank(m, "volume")}
 
@@ -344,6 +359,8 @@ async def ranking_change(
     """상승률 또는 하락률 기준 상위 종목"""
     if direction not in ("up", "down"):
         raise HTTPException(400, "direction은 'up' 또는 'down'이어야 합니다.")
+    if r := await ranking.get_ranking(direction):
+        return r
     return {"ranking": await kis.fetch_change_rank(direction)}
 
 

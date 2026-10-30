@@ -13,6 +13,7 @@ export async function api(path, { timeout = 20000 } = {}) {
   }
 }
 
+export const getStocks = () => api('/api/stocks', { timeout: 30000 })
 export const getHealth = () => api('/health', { timeout: 10000 })
 export const getIndices = () => api('/api/market/indices')
 export const getBatchPrices = (codes) => api(`/api/stock/batch/prices?codes=${codes.join(',')}`, { timeout: 30000 })

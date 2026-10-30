@@ -14,6 +14,7 @@ const TYPES = [
 export function useRanking(type) {
   const { stockMap, stockList, prices, watch } = useMarket()
   const [raw, setRaw] = useState([])
+  const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
   useEffect(() => {
     let stopped = false
@@ -24,7 +25,7 @@ export function useRanking(type) {
         const d = await getRanking(type)
         const rows = (d.ranking || []).filter((r) => r.source === 'live')
         ok = rows.length > 0
-        if (!stopped && ok) setRaw(rows)
+        if (!stopped && ok) { setRaw(rows); setCount(d.count || 0) }
       } catch {}
       if (!stopped) {
         setLoading(false)
@@ -43,8 +44,9 @@ export function useRanking(type) {
   const filtered = stockList.length
     ? raw.filter((r) => stockMap[r.code]).map((r) => ({ ...r, name: stockMap[r.code].name }))
     : raw
-  // 순위 종목을 5초 시세 조회에 포함시켜, 순서는 KRX 순위대로 두고 가격·등락률·거래대금은 통합 실시간으로
-  useEffect(() => { filtered.forEach((r) => watch(r.code)) }, [filtered.map((r) => r.code).join(','), watch])
+  // 위쪽 30종목은 5초 시세 조회에 포함시켜 더 자주 갱신 (전체 순위는 서버가 15초마다 다시 매김)
+  const top = filtered.slice(0, 30).map((r) => r.code).join(',')
+  useEffect(() => { top.split(',').filter(Boolean).forEach((c) => watch(c)) }, [top, watch])
   const merged = filtered.map((r) => {
     const p = prices[r.code]
     return p ? { ...r, price: p.price, change_rate: p.change_rate, change: p.change, volume: p.volume || r.volume, trading_value: p.trading_value || r.trading_value } : r
@@ -52,12 +54,12 @@ export function useRanking(type) {
   // 실시간 값을 덧입힌 뒤 화면에 보이는 숫자 기준으로 다시 정렬 (순서와 숫자가 어긋나지 않게)
   const metric = { amount: (r) => r.trading_value || 0, volume: (r) => r.volume || 0, up: (r) => r.change_rate ?? -999, down: (r) => -(r.change_rate ?? 999) }[type]
   const rows = metric ? [...merged].sort((a, b) => metric(b) - metric(a)) : merged
-  return { rows, loading }
+  return { rows, loading, count }
 }
 
 export default function Rank() {
   const [type, setType] = useState(() => sessionStorage.getItem('drm.rank') || 'amount')
-  const { rows, loading } = useRanking(type)
+  const { rows, loading, count } = useRanking(type)
   const select = (id) => {
     setType(id)
     try { sessionStorage.setItem('drm.rank', id) } catch {}
@@ -65,7 +67,9 @@ export default function Rank() {
   return (
     <main className="page">
       <h1 className="page-title">순위</h1>
-      <p className="page-desc">KRX 정규장 체결 기준입니다. 넥스트레이드 거래는 포함되지 않습니다.</p>
+      <p className="page-desc">
+        한국거래소·넥스트레이드 통합 시세로 {count ? `주식 ${count.toLocaleString()}종목` : '주식 전 종목'}(ETF·ETN 제외)을 모두 비교한 상위 100위입니다.
+      </p>
       <StatusLine />
       <div className="segmented" role="tablist">
         {TYPES.map((t) => (
