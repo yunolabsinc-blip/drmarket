@@ -972,13 +972,10 @@ async def fetch_minute_chart(code: str, quick: bool = False) -> list[dict]:
         return await _fetch_minute(code, key, quick)
 
 
-async def _fetch_minute(code: str, key: str, quick: bool) -> list[dict]:
-    # 통합 시세는 넥스트레이드 프리마켓(08:00)부터 애프터마켓(20:00)까지
-    day_start, day_end = ("080000", "200000") if KIS_MARKET != "J" else ("090000", "153000")
+async def _fetch_minute(code: str, key: str, quick: bool, mkt: str | None = None) -> list[dict]:
+    # 통합 시세는 넥스트레이드 프리마켓(08:00)부터 애프터마켓(20:00)까지.
+    # 넥스트레이드에 없는 종목(신규 상장주 등)은 통합 분봉이 하루 종일 기준가·거래량 0으로 오므로 거래소(J) 분봉으로
     now = datetime.utcnow() + timedelta(hours=9)
-    hour = min(now.strftime("%H%M%S"), day_end)
-    if hour < day_start:
-        hour = day_end   # 장 시작 전에는 직전 거래일 마감까지
 
     # 오늘 받아 둔 1분봉(seen)과 어디까지 받았는지(upto), 아직 못 받은 앞부분(from)을 기억해
     # 그 뒤 구간(보통 최근 30분 1회)과 빠진 앞부분만 새로 받는다.
@@ -986,16 +983,26 @@ async def _fetch_minute(code: str, key: str, quick: bool) -> list[dict]:
     day = now.strftime('%Y%m%d')
     full_key = f"minute_full:{code}:{day}"
     rkey = f"drmarket:minute:{code}:{day}"
-    base = _cache_get(full_key, 6 * 3600)
-    if not base:
+    base = _cache_get(full_key, 6 * 3600) if mkt is None else None
+    if not base and mkt is None:
         raw = await _redis("GET", rkey)
         if raw:
             try:
                 base = json.loads(raw)
             except Exception:
                 base = None
+    if base and base.get("mkt", KIS_MARKET) != "J":
+        # 받아 둔 통합 분봉의 정규장 구간이 통째로 거래량 0이면 넥스트레이드 미거래 종목 → 거래소 분봉으로
+        regular = [r for h, r in base.get("seen", {}).items() if "093000" <= h <= "153000"]
+        if len(regular) >= 30 and not any(r["v"] for r in regular):
+            base, mkt = None, "J"
+    mkt = mkt or (base or {}).get("mkt") or KIS_MARKET
+    day_start, day_end = ("080000", "200000") if mkt != "J" else ("090000", "153000")
+    hour = min(now.strftime("%H%M%S"), day_end)
+    if hour < day_start:
+        hour = day_end   # 장 시작 전에는 직전 거래일 마감까지
     # 새 거래일이 시작됐거나(시각이 되돌아감), 빈 구간이 있던 하루치를 받은 지 10분이 지났으면 처음부터
-    if base and (hour < base.get("upto", "") or (base.get("holes") and time.time() - base.get("full_at", 0) > 600)):
+    if base and (hour < base.get("upto", "") or base.get("mkt", KIS_MARKET) != mkt or (base.get("holes") and time.time() - base.get("full_at", 0) > 600)):
         base = None
 
     fmt = "%H%M%S"
@@ -1012,13 +1019,15 @@ async def _fetch_minute(code: str, key: str, quick: bool) -> list[dict]:
         if quick and len(ends) > QUICK_WINDOWS:
             ends = ends[:QUICK_WINDOWS]
             missing_from = ends[-1]
+    if mkt != "J" and not any("092900" <= e <= "153000" for e in ends) and hour > "153000" and not base:
+        ends.append("153000")   # 정규장 구간 하나는 꼭 받아 통합 분봉이 제대로 오는지 확인
 
     async def window(end_hour: str):
         # 응답 지연으로 한 구간이 비면 차트에 구멍이 나므로 한 번 더 시도
         for _ in range(2):
             data = await _get(
                 "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
-                {"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": KIS_MARKET, "FID_INPUT_ISCD": code,
+                {"FID_ETC_CLS_CODE": "", "FID_COND_MRKT_DIV_CODE": mkt, "FID_INPUT_ISCD": code,
                  "FID_INPUT_HOUR_1": end_hour, "FID_PW_DATA_INCU_YN": "N"},
                 "FHKST03010200",
             )
@@ -1027,8 +1036,14 @@ async def _fetch_minute(code: str, key: str, quick: bool) -> list[dict]:
                 return out
         return []
 
-    seen: dict[str, dict] = dict((base or {}).get("seen", {}))
     results = await asyncio.gather(*[window(e) for e in ends])
+    if mkt != "J":
+        # 정규장(09:00~15:30) 안의 30분 구간이 통째로 거래량 0이면 넥스트레이드 미거래 종목 → 거래소 분봉으로 다시
+        for e, out in zip(ends, results):
+            if "092900" <= e <= "153000" and out and not any(_num(o.get("cntg_vol"), int) for o in out):
+                return await _fetch_minute(code, key, quick, "J")
+
+    seen: dict[str, dict] = dict((base or {}).get("seen", {}))
     for out in results:
         for o in out:
             h = o["stck_cntg_hour"]
@@ -1047,7 +1062,7 @@ async def _fetch_minute(code: str, key: str, quick: bool) -> list[dict]:
             _cache_set(key, rows)   # 앞부분이 빠진 상태는 짧은 캐시에 두지 않음 (바로 이어 채우도록)
         fresh = not base or bool(base.get("from"))   # 하루치를 (처음 또는 채워서) 다 받은 순간
         state = {
-            "seen": seen, "upto": hour, "from": missing_from,
+            "seen": seen, "upto": hour, "from": missing_from, "mkt": mkt,
             # 거래가 없거나 응답이 비어 빈 구간이 생긴 하루치는 10분 뒤 다시 전부 받는다
             "holes": any(not r for r in results) if fresh else base.get("holes", False),
             "full_at": time.time() if fresh else base.get("full_at", time.time()),
