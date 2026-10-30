@@ -23,19 +23,44 @@ const INDEX_PERIODS = MAIN_PERIODS.slice(1)
 const loadPeriod = (key, fallback) => { try { return localStorage.getItem(key) || fallback } catch { return fallback } }
 const savePeriod = (key, v) => { try { localStorage.setItem(key, v) } catch {} }
 
-// 차트 데이터: 장중에는 분봉 10초, 일·주·월·년봉 60초마다 다시 받는다 (화면이 보일 때만)
-function useChart(fetcher, key, period) {
-  const [state, setState] = useState({ candles: null, error: false })
+// 차트 데이터: 장중에는 분봉 5초, 일·주·월·년봉 60초마다 다시 받는다 (화면이 보일 때만)
+// 받은 차트는 기억해 두어 기간을 바꾸거나 종목에 다시 들어올 때 빈 화면 없이 바로 그린다.
+const chartCache = new Map()   // `${종류}:${코드}:${기간}` → candles
+const CACHE_MAX = 60
+
+function remember(id, candles) {
+  chartCache.delete(id)
+  chartCache.set(id, candles)
+  if (chartCache.size > CACHE_MAX) chartCache.delete(chartCache.keys().next().value)
+}
+
+// 같은 종목의 다른 기간을 미리 받아 둔다 (분봉은 서버에서 1분봉 하나로 같이 만들어 1번이면 됨)
+function prefetchCharts(fetcher, kind, key, periods) {
+  periods.forEach((p, i) => {
+    const id = `${kind}:${key}:${p}`
+    if (chartCache.has(id)) return
+    setTimeout(() => fetcher(key, p).then((d) => d?.candles && remember(id, d.candles)).catch(() => {}), 300 + i * 250)
+  })
+}
+
+function useChart(fetcher, key, period, kind = 'stock', prefetch = []) {
+  const id = `${kind}:${key}:${period}`
+  const [state, setState] = useState(() => ({ candles: chartCache.get(id) ?? null, error: false }))
   useEffect(() => {
     let alive = true
     let timer
-    setState({ candles: null, error: false })
+    setState({ candles: chartCache.get(id) ?? null, error: false })
     const intraday = String(period).endsWith('m')
     const load = (first) => {
       if (!first && document.visibilityState !== 'visible') return schedule()
       fetcher(key, period)
-        .then((d) => alive && setState({ candles: d.candles || [], error: false }))
-        .catch(() => alive && first && setState({ candles: [], error: true }))
+        .then((d) => {
+          const candles = d.candles || []
+          if (candles.length) remember(id, candles)
+          if (alive) setState({ candles, error: false })
+          if (first && prefetch.length) prefetchCharts(fetcher, kind, key, prefetch.filter((p) => p !== period))
+        })
+        .catch(() => alive && first && setState((s) => (s.candles?.length ? s : { candles: [], error: true })))
         .finally(() => alive && schedule())
     }
     const schedule = () => {
@@ -44,11 +69,11 @@ function useChart(fetcher, key, period) {
     }
     load(true)
     return () => { alive = false; clearTimeout(timer) }
-  }, [key, period])
+  }, [id])
   return state
 }
 
-// 5초 실시간 시세를 마지막 봉에 바로 반영 (다음 차트 조회 전까지 사이를 메움)
+// 1.5초 실시간 시세를 마지막 봉에 바로 반영 (분봉은 새 분이 되면 봉 추가) (다음 차트 조회 전까지 사이를 메움)
 function withLivePrice(candles, price, period) {
   if (!candles?.length || !price) return candles
   const last = candles[candles.length - 1]
@@ -61,6 +86,17 @@ function withLivePrice(candles, price, period) {
       : period === 'M' ? last.t.slice(0, 7) === today.slice(0, 7)
       : (new Date(today) - new Date(last.t)) / 86400000 < 7
     if (!same) return candles
+  }
+  if (String(period).endsWith('m') && /^\d\d:\d\d$/.test(last.t)) {
+    const n = parseInt(period, 10) || 1
+    const kst = new Date(Date.now() + 9 * 3600000)
+    const mins = kst.getUTCHours() * 60 + kst.getUTCMinutes()
+    const bucket = Math.floor(mins / n) * n
+    const lastMins = parseInt(last.t.slice(0, 2), 10) * 60 + parseInt(last.t.slice(3), 10)
+    if (bucket > lastMins && marketPhase().key === 'open') {
+      const t = `${String(Math.floor(bucket / 60)).padStart(2, '0')}:${String(bucket % 60).padStart(2, '0')}`
+      return [...candles, { t, o: price, h: price, l: price, c: price, v: 0 }]
+    }
   }
   if (last.c === price) return candles
   const updated = { ...last, c: price, h: Math.max(last.h, price), l: Math.min(last.l, price) }
@@ -116,7 +152,7 @@ export default function Stock({ code }) {
   const info = stockMap[code]
   const live = prices[code]
   const name = info?.name || live?.name || code
-  const chart = useChart(getStockChart, code, period)
+  const chart = useChart(getStockChart, code, period, 'stock', ['D', '1m', 'W', 'M', 'Y'])
   const intraday = period.endsWith('m')
 
   useEffect(() => watch(code, true), [code, watch])   // 보고 있는 종목은 1.5초마다
@@ -286,7 +322,7 @@ export function IndexPage({ code }) {
   const { indices } = useMarket()
   const [period, setPeriodState] = useState(() => loadPeriod('drm.indexPeriod', 'D'))
   const setPeriod = (v) => { setPeriodState(v); savePeriod('drm.indexPeriod', v) }
-  const chart = useChart(getIndexChart, code, period)
+  const chart = useChart(getIndexChart, code, period, 'index', ['D', 'W', 'M', 'Y'])
   const name = INDEX_NAMES[code] || '지수'
   const cur = indices.find((i) => i.name === name)
   return (

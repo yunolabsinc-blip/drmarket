@@ -918,19 +918,32 @@ async def fetch_minute_chart(code: str) -> list[dict]:
     if hour < day_start:
         hour = day_end   # 장 시작 전에는 직전 거래일 마감까지
 
-    # 각 조회의 끝 시각: 현재 → 30분씩 거슬러 올라가며 장 시작까지
-    # 10분 안에 하루치를 받아 둔 게 있으면 최근 30분 구간만 새로 받아 합친다 (갱신 비용 1회)
-    full_key = f"minute_full:{code}:{now.strftime('%Y%m%d')}"
-    base = _cache_get(full_key, 600)
+    # 오늘 받아 둔 1분봉(seen)과 어디까지 받았는지(upto)를 기억해, 그 뒤 구간(보통 최근 30분 1회)만 새로 받는다.
+    # 다른 인스턴스가 받아 둔 것도 공유 저장소(Upstash)에서 가져와 처음 열 때 24회 조회를 피한다.
+    day = now.strftime('%Y%m%d')
+    full_key = f"minute_full:{code}:{day}"
+    rkey = f"drmarket:minute:{code}:{day}"
+    base = _cache_get(full_key, 6 * 3600)
+    if not base:
+        raw = await _redis("GET", rkey)
+        if raw:
+            try:
+                base = json.loads(raw)
+            except Exception:
+                base = None
+    # 새 거래일이 시작됐거나(시각이 되돌아감), 빈 구간이 있던 하루치를 받은 지 10분이 지났으면 처음부터
+    if base and (hour < base.get("upto", "") or (base.get("holes") and time.time() - base.get("full_at", 0) > 600)):
+        base = None
+    upto = (base or {}).get("upto", "")
     ends = []
     t = datetime.strptime(hour, "%H%M%S")
     start_t = datetime.strptime(day_start, "%H%M%S")
-    if base:
-        ends.append(hour)
-    else:
-        while t >= start_t:   # 장 시작 봉(08:00)까지 포함
-            ends.append(t.strftime("%H%M%S"))
-            t -= timedelta(minutes=30)
+    stop_t = datetime.strptime(upto, "%H%M%S") if upto else start_t - timedelta(minutes=1)
+    while t >= start_t:   # 장 시작 봉(08:00)까지 포함
+        ends.append(t.strftime("%H%M%S"))
+        if t - timedelta(minutes=29) <= stop_t:   # 이미 받은 시각까지 덮었으면 그만 (1회 30개 = 30분)
+            break
+        t -= timedelta(minutes=30)
 
     async def window(end_hour: str):
         # 응답 지연으로 한 구간이 비면 차트에 구멍이 나므로 한 번 더 시도
@@ -946,8 +959,9 @@ async def fetch_minute_chart(code: str) -> list[dict]:
                 return out
         return []
 
-    seen: dict[str, dict] = dict(base or {})
-    for out in await asyncio.gather(*[window(e) for e in ends]):
+    seen: dict[str, dict] = dict((base or {}).get("seen", {}))
+    results = await asyncio.gather(*[window(e) for e in ends])
+    for out in results:
         for o in out:
             h = o["stck_cntg_hour"]
             if h < day_start:
@@ -961,10 +975,19 @@ async def fetch_minute_chart(code: str) -> list[dict]:
     rows = [seen[k] for k in sorted(seen)]
     if rows:
         _cache_set(key, rows)
-        if not base:
-            _cache_set(full_key, seen)
-        else:
-            _resp_cache[full_key] = (_resp_cache[full_key][0], seen)   # 저장 시각은 유지, 내용만 갱신
+        full = not base
+        state = {
+            "seen": seen, "upto": hour,
+            # 거래가 없거나 응답이 비어 빈 구간이 생긴 하루치는 10분 뒤 다시 전부 받는다 (예전 방식)
+            "holes": any(not r for r in results) if full else base.get("holes", False),
+            "full_at": time.time() if full else base.get("full_at", time.time()),
+        }
+        _cache_set(full_key, state)
+        # 공유 저장소는 하루치를 받았을 때와 이후 1분에 한 번만 갱신 (요청마다 쓰지 않음)
+        last_put = _resp_cache.get(f"minute_put:{code}")
+        if full or not last_put or time.monotonic() - last_put[0] > 60:
+            _cache_set(f"minute_put:{code}", True)
+            await _redis("SET", rkey, json.dumps(state, separators=(",", ":")), "EX", "86400")
     return rows
 
 
