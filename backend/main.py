@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request, Header
+from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request, Header
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -332,10 +332,11 @@ async def get_stocks():
 # ──────────────────────────────────────────────
 @app.get("/api/ranking/amount", summary="거래대금 상위")
 async def ranking_amount(
+    background: BackgroundTasks,
     market: str = Query("all", description="all / kospi / kosdaq"),
 ):
     """거래대금 기준 상위 종목"""
-    if market == "all" and (r := await ranking.get_ranking("amount")):
+    if market == "all" and (r := await ranking.get_ranking("amount", background)):
         return r
     m = "J" if market == "kospi" else ("Q" if market == "kosdaq" else "all")
     return {"ranking": await kis.fetch_volume_rank(m, "amount")}
@@ -343,10 +344,11 @@ async def ranking_amount(
 
 @app.get("/api/ranking/volume", summary="거래량 상위")
 async def ranking_volume(
+    background: BackgroundTasks,
     market: str = Query("all", description="all / kospi / kosdaq"),
 ):
     """거래량 기준 상위 종목"""
-    if market == "all" and (r := await ranking.get_ranking("volume")):
+    if market == "all" and (r := await ranking.get_ranking("volume", background)):
         return r
     m = "J" if market == "kospi" else ("Q" if market == "kosdaq" else "all")
     return {"ranking": await kis.fetch_volume_rank(m, "volume")}
@@ -354,12 +356,13 @@ async def ranking_volume(
 
 @app.get("/api/ranking/change", summary="등락률 상위")
 async def ranking_change(
+    background: BackgroundTasks,
     direction: str = Query("up", description="up (상승률) / down (하락률)"),
 ):
     """상승률 또는 하락률 기준 상위 종목"""
     if direction not in ("up", "down"):
         raise HTTPException(400, "direction은 'up' 또는 'down'이어야 합니다.")
-    if r := await ranking.get_ranking(direction):
+    if r := await ranking.get_ranking(direction, background):
         return r
     return {"ranking": await kis.fetch_change_rank(direction)}
 

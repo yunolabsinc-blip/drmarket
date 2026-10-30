@@ -129,8 +129,26 @@ async def _shared() -> dict | None:
     return None
 
 
-async def get_ranking(kind: str) -> dict | None:
-    """kind: amount / volume / up / down → {"ranking": [...], "count": 종목 수, "at": 시각} 또는 None"""
+async def refresh(age: int | None = None):
+    """오래됐으면 한 인스턴스만(잠금) 전 종목을 다시 돈다"""
+    age = _max_age() if age is None else age
+    got = await kis._redis("SET", LOCK, "1", "NX", "EX", "30")
+    if not got and await kis._redis("GET", LOCK):
+        return   # 다른 인스턴스가 도는 중
+    async with _sweep_lock:
+        try:
+            if not _local["data"] or time.time() - _local["data"]["at"] > age:
+                fresh = await _sweep()
+                if fresh:
+                    _local["data"] = fresh
+                    await kis._redis("SET", RKEY, json.dumps(fresh, ensure_ascii=False, separators=(",", ":")), "EX", "86400")
+        finally:
+            await kis._redis("DEL", LOCK)
+
+
+async def get_ranking(kind: str, background=None) -> dict | None:
+    """kind: amount / volume / up / down → {"ranking": [...], "count": 종목 수, "at": 시각} 또는 None
+    background(FastAPI BackgroundTasks)를 주면, 오래된 결과는 바로 돌려주고 새 계산은 응답 뒤에 한다."""
     age = _max_age()
     data = _local["data"]
     if not data or time.time() - data["at"] > age:
@@ -138,25 +156,22 @@ async def get_ranking(kind: str) -> dict | None:
         if shared and (not data or shared["at"] > data["at"]):
             data = shared
             _local["data"] = data
-    if not data or time.time() - data["at"] > age:
-        # 다른 인스턴스가 돌고 있으면 직전 결과를 그대로 쓰고, 처음이면 잠깐 기다린다
-        got = await kis._redis("SET", LOCK, "1", "NX", "EX", "30")
-        if got or not (await kis._redis("GET", LOCK)):
-            async with _sweep_lock:
-                if not _local["data"] or time.time() - _local["data"]["at"] > age:
-                    fresh = await _sweep()
-                    if fresh:
-                        _local["data"] = fresh
-                        await kis._redis("SET", RKEY, json.dumps(fresh, ensure_ascii=False, separators=(",", ":")), "EX", "86400")
-                    await kis._redis("DEL", LOCK)
+    if data and time.time() - data["at"] > age:
+        if background is not None:
+            background.add_task(refresh, age)
+        else:
+            await refresh(age)
             data = _local["data"]
-        elif not data:
-            for _ in range(10):
-                await asyncio.sleep(1)
-                data = await _shared()
-                if data:
-                    _local["data"] = data
-                    break
+    elif not data:
+        await refresh(age)
+        data = _local["data"]
+        for _ in range(10):   # 다른 인스턴스가 처음 계산 중이면 잠깐 기다림
+            if data:
+                break
+            await asyncio.sleep(1)
+            data = await _shared()
+            if data:
+                _local["data"] = data
     if not data:
         return None
     return {"ranking": data.get(kind, []), "count": data.get("count", 0), "at": data["at"]}
