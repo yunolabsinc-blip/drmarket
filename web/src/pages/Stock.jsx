@@ -40,7 +40,7 @@ function useChart(fetcher, key, period) {
     }
     const schedule = () => {
       const open = marketPhase().key === 'open'
-      timer = setTimeout(() => load(false), open ? (intraday ? 10000 : 60000) : 300000)
+      timer = setTimeout(() => load(false), open ? (intraday ? 5000 : 60000) : 300000)
     }
     load(true)
     return () => { alive = false; clearTimeout(timer) }
@@ -119,7 +119,7 @@ export default function Stock({ code }) {
   const chart = useChart(getStockChart, code, period)
   const intraday = period.endsWith('m')
 
-  useEffect(() => { watch(code) }, [code, watch])
+  useEffect(() => watch(code, true), [code, watch])   // 보고 있는 종목은 1.5초마다
   useEffect(() => {
     let alive = true
     let timer

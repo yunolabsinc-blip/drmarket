@@ -332,7 +332,7 @@ async def _get(path: str, params: dict, tr_id: str) -> dict | None:
 # ──────────────────────────────────────────────
 async def fetch_market_indices() -> list[dict]:
     """코스피·코스닥 지수 조회"""
-    cached = _cache_get("indices", 10)
+    cached = _cache_get("indices", 3)
     if cached:
         return cached
     token = await get_access_token()
@@ -432,11 +432,14 @@ async def fetch_batch_prices(codes: list[str]) -> list[dict]:
     실패하거나 모의 모드면 종목별 조회로 대체.
     """
     results: dict[str, dict] = {}
+    for c in codes:   # 1초 안에 받은 시세는 그대로 (여러 사람이 같은 종목을 볼 때 호출 절약)
+        hit = _cache_get(f"price:{c}", 1)
+        if hit:
+            results[c] = hit
     if _is_configured() and KIS_MODE == "real":
-        for i in range(0, len(codes), 30):
-            chunk = [c for c in codes[i:i + 30] if not _cache_get(f"price:{c}", 3)]
-            if not chunk:
-                continue
+        todo = [c for c in codes if c not in results]
+
+        async def one(chunk):
             params = {}
             for n, c in enumerate(chunk, 1):
                 params[f"FID_COND_MRKT_DIV_CODE_{n}"] = KIS_MARKET
@@ -447,7 +450,7 @@ async def fetch_batch_prices(codes: list[str]) -> list[dict]:
                 price = int(float(o.get("inter2_prpr", 0) or 0))
                 if not c or price <= 0:
                     continue
-                prev = int(float(o.get("inter2_prdy_clpr", 0) or 0)) or price
+                prev = price - int(float(o.get("inter2_prdy_vrss", 0) or 0))
                 item = {
                     "code": c,
                     "name": o.get("inter_kor_isnm", ""),
@@ -461,6 +464,9 @@ async def fetch_batch_prices(codes: list[str]) -> list[dict]:
                 }
                 _cache_set(f"price:{c}", item)
                 results[c] = item
+
+        # 30종목씩 나눈 묶음을 동시에 조회
+        await asyncio.gather(*[one(todo[k:k + 30]) for k in range(0, len(todo), 30)])
 
     missing = [c for c in codes if c not in results]
     singles = await asyncio.gather(*[fetch_stock_price(c) for c in missing])

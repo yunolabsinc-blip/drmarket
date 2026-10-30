@@ -48,7 +48,8 @@ export function MarketProvider({ children }) {
   const [favorites, setFavorites] = useState(loadFavorites)
   const [memos, setMemos] = useState(loadMemos)
   const prevPrices = useRef({})
-  const extraCodes = useRef(new Set())              // 화면에서 추가로 보고 있는 종목
+  // 화면에서 추가로 보고 있는 종목: code → { n: 보고 있는 화면 수, fast: 빠른 갱신 화면 수, until: 화면을 떠난 뒤 유지 시각 }
+  const watchers = useRef(new Map())
 
   useEffect(() => save('drm.favorites', favorites), [favorites])
   useEffect(() => save('drm.memos', memos), [memos])
@@ -73,20 +74,18 @@ export function MarketProvider({ children }) {
     return m
   }, [stockList])
 
-  const refreshPrices = useCallback(async () => {
-    const codes = [...new Set([...THEME_CODES, ...favorites, ...extraCodes.current])]
-    const result = {}
-    for (let i = 0; i < codes.length; i += 150) {
-      const data = await getBatchPrices(codes.slice(i, i + 150))
-      for (const s of data.stocks || []) {
-        if (s.source === 'live' && s.price > 0) result[s.code] = s
-      }
+  const watchedCodes = (fastOnly) => {
+    const now = Date.now()
+    const out = []
+    for (const [code, w] of watchers.current) {
+      if (fastOnly ? w.fast > 0 : w.n > 0 || now < w.until) out.push(code)
+      else if (!fastOnly && w.n <= 0 && now >= w.until) watchers.current.delete(code)
     }
-    if (!Object.keys(result).length) {
-      setStatus((st) => (st === 'demo' ? st : 'error'))
-      return false
-    }
-    setStatus((st) => (st === 'demo' ? st : 'live'))
+    return out
+  }
+
+  // 받은 시세를 반영하고 바뀐 종목은 잠깐 깜빡임
+  const applyPrices = useCallback((result) => {
     const changed = {}
     for (const [code, s] of Object.entries(result)) {
       const before = prevPrices.current[code]
@@ -99,8 +98,40 @@ export function MarketProvider({ children }) {
       setTimeout(() => setFlash({}), 600)
     }
     setUpdatedAt(new Date())
+  }, [])
+
+  const fetchPrices = async (codes) => {
+    const result = {}
+    const chunks = []
+    for (let i = 0; i < codes.length; i += 150) chunks.push(codes.slice(i, i + 150))
+    const all = await Promise.all(chunks.map((c) => getBatchPrices(c)))   // 나눠 받을 때도 동시에
+    for (const data of all) {
+      for (const s of data.stocks || []) {
+        if (s.source === 'live' && s.price > 0) result[s.code] = s
+      }
+    }
+    return result
+  }
+
+  const refreshPrices = useCallback(async () => {
+    const codes = [...new Set([...THEME_CODES, ...favorites, ...watchedCodes(false)])]
+    const result = await fetchPrices(codes)
+    if (!Object.keys(result).length) {
+      setStatus((st) => (st === 'demo' ? st : 'error'))
+      return false
+    }
+    setStatus((st) => (st === 'demo' ? st : 'live'))
+    applyPrices(result)
     return true
-  }, [favorites])
+  }, [favorites, applyPrices])
+
+  // 지금 보고 있는 종목(종목 화면)은 1.5초마다 따로 갱신
+  const refreshFast = useCallback(async () => {
+    const codes = watchedCodes(true)
+    if (!codes.length) return
+    const result = await fetchPrices(codes)
+    if (Object.keys(result).length) applyPrices(result)
+  }, [applyPrices])
 
   const refreshIndices = useCallback(async () => {
     const d = await getIndices()
@@ -109,13 +140,16 @@ export function MarketProvider({ children }) {
     setIndices(live)
   }, [])
 
-  // 폴링: 시세는 장중 5초 / 장외 60초, 지수는 30초
+  // 폴링: 시세는 장중 3초(보고 있는 종목은 1.5초) / 장외 60초, 지수는 장중 5초
+  // 간격은 요청 시작 기준이라 응답 시간만큼 늦어지지 않음
   useEffect(() => {
     let stopped = false
-    let priceTimer, indexTimer
+    let priceTimer, indexTimer, fastTimer
+    const after = (started, every) => Math.max(500, every - (Date.now() - started))
 
     let first = true
     const tickPrices = async () => {
+      const started = Date.now()
       let ok = true
       // 첫 조회는 탭이 백그라운드여도 실행, 이후에는 보이는 동안만
       if (first || document.visibilityState === 'visible') {
@@ -128,31 +162,31 @@ export function MarketProvider({ children }) {
         }
       }
       // 실패하면 5초 뒤 재시도, 성공하면 장중 5초 / 장외 60초
-      if (!stopped) priceTimer = setTimeout(tickPrices, !ok || marketPhase().key === 'open' ? 5000 : 60000)
+      if (!stopped) priceTimer = setTimeout(tickPrices, !ok ? 5000 : marketPhase().key === 'open' ? after(started, 3000) : 60000)
+    }
+    const tickFast = async () => {
+      const started = Date.now()
+      if (document.visibilityState === 'visible' && marketPhase().key === 'open') await refreshFast().catch(() => {})
+      if (!stopped) fastTimer = setTimeout(tickFast, after(started, 1500))
     }
     let firstIndex = true
     const tickIndices = async () => {
+      const started = Date.now()
       let ok = true
       if (firstIndex || document.visibilityState === 'visible') {
         firstIndex = false
         ok = await refreshIndices().then(() => true).catch(() => false)
       }
-      if (!stopped) indexTimer = setTimeout(tickIndices, ok ? 30000 : 6000)
+      if (!stopped) indexTimer = setTimeout(tickIndices, !ok ? 6000 : marketPhase().key === 'open' ? after(started, 5000) : 60000)
     }
 
-    ;(async () => {
-      try {
-        const h = await getHealth()
-        if (!h.api_configured) {
-          setStatus('demo')
-          return
-        }
-      } catch {
-        setStatus('error')
-      }
-      tickPrices()
-      tickIndices()
-    })()
+    // 서버 상태 확인을 기다리지 않고 바로 시세부터 받음 (첫 화면이 한 번 왕복만큼 빨라짐)
+    tickPrices()
+    tickIndices()
+    tickFast()
+    getHealth()
+      .then((h) => { if (!h.api_configured) setStatus('demo') })
+      .catch(() => {})
 
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
@@ -165,9 +199,10 @@ export function MarketProvider({ children }) {
       stopped = true
       clearTimeout(priceTimer)
       clearTimeout(indexTimer)
+      clearTimeout(fastTimer)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [refreshPrices, refreshIndices])
+  }, [refreshPrices, refreshIndices, refreshFast])
 
   // 테마별 집계: 평균 등락률, 상승/하락 종목 수, 대장주
   const themes = useMemo(
@@ -197,12 +232,29 @@ export function MarketProvider({ children }) {
     [],
   )
   const setMemo = useCallback((code, text) => setMemos((m) => ({ ...m, [code]: text })), [])
-  const watch = useCallback((code) => {
-    if (!extraCodes.current.has(code)) {
-      extraCodes.current.add(code)
-      refreshPrices().catch(() => {})
+  // watch(code, fast) → 화면을 떠날 때 부르는 해제 함수. 새 종목이 생기면 잠깐 모았다가 한 번만 조회
+  const pendingRefresh = useRef(null)
+  const refreshRef = useRef(refreshPrices)
+  refreshRef.current = refreshPrices
+  const watch = useCallback((code, fast = false) => {
+    const m = watchers.current
+    const w = m.get(code) || { n: 0, fast: 0, until: 0 }
+    const isNew = w.n <= 0 && Date.now() >= w.until
+    w.n += 1
+    if (fast) w.fast += 1
+    m.set(code, w)
+    if (isNew && !pendingRefresh.current) {
+      pendingRefresh.current = setTimeout(() => {
+        pendingRefresh.current = null
+        refreshRef.current().catch(() => {})
+      }, 80)
     }
-  }, [refreshPrices])
+    return () => {
+      w.n -= 1
+      if (fast) w.fast -= 1
+      if (w.n <= 0) w.until = Date.now() + 30000   // 바로 다시 볼 수 있어 30초는 유지
+    }
+  }, [])
 
   const value = {
     prices, flash, indices, status, updatedAt, themes, stockMap, stockList, findStocks,

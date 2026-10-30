@@ -29,7 +29,7 @@ export function useRanking(type) {
       } catch {}
       if (!stopped) {
         setLoading(false)
-        timer = setTimeout(load, !ok ? 6000 : marketPhase().key === 'open' ? 10000 : 120000)
+        timer = setTimeout(load, !ok ? 6000 : marketPhase().key === 'open' ? 5000 : 120000)
       }
     }
     setRaw([])
@@ -46,7 +46,10 @@ export function useRanking(type) {
     : raw
   // 위쪽 30종목은 5초 시세 조회에 포함시켜 더 자주 갱신 (전체 순위는 서버가 15초마다 다시 매김)
   const top = filtered.slice(0, 30).map((r) => r.code).join(',')
-  useEffect(() => { top.split(',').filter(Boolean).forEach((c) => watch(c)) }, [top, watch])
+  useEffect(() => {
+    const offs = top.split(',').filter(Boolean).map((c) => watch(c))
+    return () => offs.forEach((off) => off())
+  }, [top, watch])
   const merged = filtered.map((r) => {
     const p = prices[r.code]
     return p ? { ...r, price: p.price, change_rate: p.change_rate, change: p.change, volume: p.volume || r.volume, trading_value: p.trading_value || r.trading_value } : r

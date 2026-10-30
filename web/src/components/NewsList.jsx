@@ -27,7 +27,11 @@ export function timeAgo(iso) {
 export function RelatedStocks({ text, onNavigate }) {
   const { findStocks, prices, watch } = useMarket()
   const stocks = useMemo(() => findStocks(text), [findStocks, text])
-  useEffect(() => { stocks.forEach((s) => watch(s.code)) }, [stocks, watch])
+  const key = stocks.map((s) => s.code).join(',')
+  useEffect(() => {
+    const offs = key.split(',').filter(Boolean).map((c) => watch(c))
+    return () => offs.forEach((off) => off())
+  }, [key, watch])
   if (!stocks.length) return null
   return (
     <div className="related">
