@@ -58,7 +58,7 @@ export function StatusLine() {
   )
 }
 
-const TABS = [
+export const TABS = [
   { id: 'home', path: '/', label: '홈', icon: HomeIcon },
   { id: 'calendar', path: '/market/calendar', label: '일정', icon: CalendarIcon },
   { id: 'rank', path: '/rank', label: '순위', icon: ChartIcon },
@@ -66,10 +66,12 @@ const TABS = [
   { id: 'watch', path: '/watch', label: '관심', icon: StarIcon },
 ]
 
+// 테마 화면들은 홈 소속, 시장 > 일정은 일정 탭
+export const activeTab = (page, param) => (page === 'market' && param === 'calendar' ? 'calendar'
+  : ['themes', 'theme'].includes(page) ? 'home' : page)
+
 export function TabBar({ page, param }) {
-  // 테마 화면들은 홈 소속, 시장 > 일정은 일정 탭
-  const active = page === 'market' && param === 'calendar' ? 'calendar'
-    : ['themes', 'theme'].includes(page) ? 'home' : page
+  const active = activeTab(page, param)
   return (
     <nav className="tabbar" aria-label="주요 메뉴">
       {TABS.map((t) => (

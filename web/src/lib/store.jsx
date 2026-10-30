@@ -54,7 +54,7 @@ export function MarketProvider({ children }) {
   useEffect(() => save('drm.memos', memos), [memos])
 
   useEffect(() => {
-    fetch('./stocks.json')
+    fetch('./stocks.json', { cache: 'no-cache' })   // 매일 갱신되는 목록이라 캐시 대신 확인 후 사용
       .then((r) => r.json())
       .then(setStockList)
       .catch(() => {})

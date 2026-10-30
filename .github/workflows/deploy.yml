@@ -5,6 +5,9 @@ on:
     branches: [ main ]
     paths: [ 'web/**', '.github/workflows/deploy.yml' ]
   workflow_dispatch:
+  # 매일 07:30 KST(전날 22:30 UTC) — 신규 상장·폐지·사명 변경을 종목 검색 목록에 반영
+  schedule:
+    - cron: '30 22 * * *'
 
 permissions:
   contents: read
@@ -33,6 +36,14 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # 한국투자증권 종목 마스터로 public/stocks.json 갱신 (실패하면 저장소에 있는 목록을 그대로 씀)
+      - name: Update stock list
+        run: python scripts/build_stocks.py
+        continue-on-error: true
       - name: Install
         run: npm ci
       - name: Build

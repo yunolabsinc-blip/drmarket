@@ -15,6 +15,7 @@ import Admin from './pages/Admin'
 import Feedback from './components/Feedback'
 import { InstallGuide, useInstallGuide } from './components/Install'
 import { setRoute, track } from './lib/analytics'
+import { useTabSwipe } from './lib/swipe'
 
 function Screen({ route, openSearch }) {
   switch (route.page) {
@@ -41,12 +42,13 @@ export default function App() {
   useEffect(() => { setRoute(route) }, [route.page, route.param])
   const closeSearch = useCallback(() => setSearching(false), [])
   const isSub = ['theme', 'stock', 'index', 'admin'].includes(route.page)
+  useTabSwipe(route, !isSub && !searching && !menuOpen && !feedbackOpen && !install.mode)
 
   return (
     <MarketProvider>
       <div className="app">
         {!isSub && <TopBar onSearch={openSearch} onMenu={() => setMenuOpen(true)} />}
-        <Screen route={route} openSearch={openSearch} />
+        <Screen key={route.page === 'market' ? `market/${route.param || ''}` : route.page} route={route} openSearch={openSearch} />
         <NewsTicker hidden={(route.page === 'market' && route.param === 'news') || route.page === 'admin'} />
         <TabBar page={route.page} param={route.param} />
         {searching && <Search onClose={closeSearch} />}

@@ -576,3 +576,10 @@ button.cal-row:hover { background: #fafbfc; }
 .ev-event { background: #fdf2f8; color: #db2777; }
 .ev-earnings { background: #f0fdf4; color: #16a34a; }
 .cal-tools .segmented.small button { font-size: 12px; padding: 7px 0; }
+
+/* 좌우 스와이프로 탭을 옮길 때 새 화면이 미끄러져 들어옴 */
+html[data-swipe="next"] main.page { animation: swipe-next .26s ease-out; }
+html[data-swipe="prev"] main.page { animation: swipe-prev .26s ease-out; }
+@keyframes swipe-next { from { transform: translateX(36px); opacity: .4; } to { transform: none; opacity: 1; } }
+@keyframes swipe-prev { from { transform: translateX(-36px); opacity: .4; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { html[data-swipe] main.page { animation: none; } }
