@@ -1,5 +1,4 @@
 {
-  "fluid": true,
   "rewrites": [
     {
       "source": "/(.*)",
