@@ -128,6 +128,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 누구에게나 같은 공용 데이터는 Vercel CDN에 잠깐 저장 (경로 앞부분, 신선 초, 오래돼도 먼저 주는 초)
+# — 서버가 잠들어 있어도(콜드 스타트) 첫 화면이 바로 뜨고, 증권사 호출도 줄어든다. 차트는 엔드포인트에서 따로 지정.
+_CDN_RULES = [
+    ("/api/market/indices", 2, 30),
+    ("/api/stock/batch/prices", 1, 10),
+    ("/api/ranking/", 5, 60),
+    ("/api/market/overview", 10, 120),
+    ("/api/news", 120, 1800),
+    ("/api/market/calendar", 600, 86400),
+    ("/api/stock/", 3, 60),   # /price, /detail, /news, /events, /limit-ups
+]
+_CDN_LONG = {"/news": (120, 1800), "/events": (600, 86400), "/limit-ups": (3600, 86400)}
+_CDN_SKIP = ("/orderbook", "/chart")
+
+
+@app.middleware("http")
+async def cdn_cache(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if request.method != "GET" or response.status_code != 200 or "cdn-cache-control" in response.headers:
+        return response
+    if path.endswith(_CDN_SKIP):
+        return response
+    for prefix, fresh, stale in _CDN_RULES:
+        if path.startswith(prefix):
+            if prefix == "/api/stock/":
+                for tail, rule in _CDN_LONG.items():
+                    if path.endswith(tail):
+                        fresh, stale = rule
+            response.headers["CDN-Cache-Control"] = f"public, max-age={fresh}, stale-while-revalidate={stale}"
+            if "cache-control" not in response.headers:
+                response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
+            break
+    return response
+
 
 # ──────────────────────────────────────────────
 # 헬스체크

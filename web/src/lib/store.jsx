@@ -24,6 +24,11 @@ const save = (key, value) => {
   } catch {}
 }
 
+// 마지막으로 받은 시세·지수·종목 목록: 다음에 앱을 열 때 서버 응답을 기다리지 않고 먼저 보여 준다
+const SNAP_KEY = 'drm.snapshot'
+const snapshot = load(SNAP_KEY, null)
+const cachedStocks = load('drm.stocks', [])
+
 function loadFavorites() {
   // 이전 버전은 'A005930' 형식으로 저장했으므로 앞의 A를 제거해 이어받음
   const v2 = load('drm.favorites', null)
@@ -39,12 +44,12 @@ function loadMemos() {
 }
 
 export function MarketProvider({ children }) {
-  const [prices, setPrices] = useState({})          // code → 시세
+  const [prices, setPrices] = useState(() => snapshot?.prices || {})          // code → 시세
   const [flash, setFlash] = useState({})            // code → 'up' | 'down' (가격 변동 깜빡임)
-  const [indices, setIndices] = useState([])
+  const [indices, setIndices] = useState(() => snapshot?.indices || [])
   const [status, setStatus] = useState('connecting') // connecting | live | error | demo
   const [updatedAt, setUpdatedAt] = useState(null)
-  const [stockList, setStockList] = useState([])    // [[code, name, market]]
+  const [stockList, setStockList] = useState(() => (Array.isArray(cachedStocks) ? cachedStocks : []))    // [[code, name, market]]
   const [favorites, setFavorites] = useState(loadFavorites)
   const [memos, setMemos] = useState(loadMemos)
   const prevPrices = useRef({})
@@ -53,16 +58,25 @@ export function MarketProvider({ children }) {
 
   useEffect(() => save('drm.favorites', favorites), [favorites])
   useEffect(() => save('drm.memos', memos), [memos])
+  // 시세 기억은 5초에 한 번만 저장 (1.5초마다 쓰지 않도록)
+  const snapTimer = useRef(null)
+  const snapData = useRef(null)
+  useEffect(() => {
+    if (!Object.keys(prices).length && !indices.length) return
+    snapData.current = { prices, indices, at: Date.now() }
+    if (snapTimer.current) return
+    snapTimer.current = setTimeout(() => { snapTimer.current = null; save(SNAP_KEY, snapData.current) }, 5000)
+  }, [prices, indices])
 
   useEffect(() => {
     // 사이트에 함께 배포된 목록으로 먼저 띄우고, 서버의 최신 목록(신규 상장·폐지·사명 변경 반영)으로 바꿈
     let fresh = false
     fetch('./stocks.json', { cache: 'no-cache' })
       .then((r) => r.json())
-      .then((list) => { if (!fresh) setStockList(list) })
+      .then((list) => { if (!fresh && Array.isArray(list) && list.length > 1000) setStockList(list) })
       .catch(() => {})
     getStocks()
-      .then((list) => { if (Array.isArray(list) && list.length > 1000) { fresh = true; setStockList(list) } })
+      .then((list) => { if (Array.isArray(list) && list.length > 1000) { fresh = true; setStockList(list); save('drm.stocks', list) } })
       .catch(() => {})
   }, [])
 
