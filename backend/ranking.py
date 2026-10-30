@@ -130,8 +130,15 @@ async def _shared() -> dict | None:
 
 
 async def refresh(age: int | None = None):
-    """오래됐으면 한 인스턴스만(잠금) 전 종목을 다시 돈다"""
-    age = _max_age() if age is None else age
+    """오래됐으면 한 인스턴스만(잠금) 전 종목을 다시 돈다. 전 종목 조회는 사용자 요청(차트·시세)에 양보"""
+    token = kis.low_priority.set(True)
+    try:
+        await _refresh(_max_age() if age is None else age)
+    finally:
+        kis.low_priority.reset(token)
+
+
+async def _refresh(age: int):
     got = await kis._redis("SET", LOCK, "1", "NX", "EX", "30")
     if not got and await kis._redis("GET", LOCK):
         return   # 다른 인스턴스가 도는 중

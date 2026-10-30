@@ -245,22 +245,48 @@ async def get_orderbook(code: str):
     return {**d, "next_ms": kis.poll_hint()}   # 클라이언트 갱신 간격 권장값
 
 
+def _cdn(body: dict, fresh: int, stale: int) -> JSONResponse:
+    """Vercel CDN에 잠깐 저장 — 같은 차트를 다시 여는 사람은 서버·증권사 조회 없이 바로 받는다.
+    오래된 것은 먼저 주고 뒤에서 새로 받음(stale-while-revalidate). 브라우저는 매번 다시 확인."""
+    return JSONResponse(body, headers={
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        "CDN-Cache-Control": f"public, max-age={fresh}, stale-while-revalidate={stale}",
+    })
+
+
+def _market_open() -> bool:
+    return ranking._max_age() < 600   # 평일 08:00~20:00
+
+
 @app.get("/api/stock/{code}/chart", summary="종목 차트")
-async def get_stock_chart(code: str, period: str = Query("D", description="1m/3m/5m/10m/30m/60m (당일 분봉) · D/W/M/Y (일/주/월/년봉)")):
+async def get_stock_chart(background: BackgroundTasks, code: str,
+                          period: str = Query("D", description="1m/3m/5m/10m/30m/60m (당일 분봉) · D/W/M/Y (일/주/월/년봉)"),
+                          quick: bool = Query(False, description="분봉: 처음 열 때 최근 2시간만 먼저")):
     if period.endswith("m") and period[:-1].isdigit():
         n = int(period[:-1])
         if n not in (1, 3, 5, 10, 30, 60):
             raise HTTPException(400, "분봉은 1, 3, 5, 10, 30, 60분만 지원합니다.")
-        return {"period": period, "candles": kis.aggregate_minutes(await kis.fetch_minute_chart(code), n)}
+        rows = await kis.fetch_minute_chart(code, quick=quick)
+        body = {"period": period, "candles": kis.aggregate_minutes(rows, n)}
+        if kis.minute_partial(code):
+            background.add_task(kis.fetch_minute_chart, code)   # 나머지 앞부분은 응답 뒤에 채움
+            return JSONResponse({**body, "partial": True}, headers={"Cache-Control": "no-store"})
+        return _cdn(body, 2, 20) if _market_open() else _cdn(body, 60, 600)
     if period not in ("D", "W", "M", "Y"):
         raise HTTPException(400, "period는 1m/3m/5m/10m/30m/60m 또는 D/W/M/Y 입니다.")
-    return {"period": period, "candles": await kis.fetch_daily_chart(code, period)}
+    body = {"period": period, "candles": await kis.fetch_daily_chart(code, period)}
+    if not body["candles"]:
+        return body
+    return _cdn(body, 20, 120) if _market_open() else _cdn(body, 300, 3600)
 
 
 @app.get("/api/index/{code}/chart", summary="지수 차트")
 async def get_index_chart(code: str, period: str = Query("D", description="D / W / M / Y")):
     """code: 0001=코스피, 1001=코스닥"""
-    return {"period": period, "candles": await kis.fetch_daily_chart(code, period, is_index=True)}
+    body = {"period": period, "candles": await kis.fetch_daily_chart(code, period, is_index=True)}
+    if not body["candles"]:
+        return body
+    return _cdn(body, 20, 120) if _market_open() else _cdn(body, 300, 3600)
 
 
 # ──────────────────────────────────────────────

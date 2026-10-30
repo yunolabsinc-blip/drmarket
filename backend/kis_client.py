@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import contextvars
 import json
 import logging
 import os
@@ -67,13 +68,42 @@ _rate_lock = asyncio.Lock()
 _last_call = 0.0
 
 
+# 순위 계산처럼 뒤에서 도는 대량 조회는 낮은 우선순위: 사용자 요청(차트·시세)이 기다리고 있으면 양보한다
+low_priority = contextvars.ContextVar("kis_low_priority", default=False)
+_hi_waiting = 0
+
+
 async def _throttle():
-    global _last_call
-    async with _rate_lock:
-        wait = _last_call + 1 / _RATE_PER_SEC - time.monotonic()
-        if wait > 0:
-            await asyncio.sleep(wait)
-        _last_call = time.monotonic()
+    global _last_call, _hi_waiting
+    low = low_priority.get()
+    if low:
+        while _hi_waiting:
+            await asyncio.sleep(0.02)
+    else:
+        _hi_waiting += 1
+    try:
+        async with _rate_lock:
+            wait = _last_call + 1 / _RATE_PER_SEC - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            _last_call = time.monotonic()
+    finally:
+        if not low:
+            _hi_waiting -= 1
+
+
+# 연결 재사용 (호출마다 TLS 연결을 새로 맺지 않도록). 이벤트 루프마다 하나씩
+_http: dict[tuple, httpx.AsyncClient] = {}
+
+
+def _client(verify: bool = True) -> httpx.AsyncClient:
+    k = (id(asyncio.get_running_loop()), verify)
+    c = _http.get(k)
+    if c is None or c.is_closed:
+        c = httpx.AsyncClient(timeout=10, verify=verify,
+                              limits=httpx.Limits(max_connections=30, max_keepalive_connections=20))
+        _http[k] = c
+    return c
 
 
 # 짧은 응답 캐시 (같은 데이터를 여러 클라이언트가 동시에 요청할 때 KIS 호출 절약)
@@ -181,10 +211,9 @@ async def _redis(*cmd: str):
     if not (_REDIS_URL and _REDIS_TOKEN):
         return None
     try:
-        async with httpx.AsyncClient(timeout=3) as client:
-            resp = await client.post(_REDIS_URL, json=list(cmd),
-                                     headers={"Authorization": f"Bearer {_REDIS_TOKEN}"})
-            return resp.json().get("result")
+        resp = await _client().post(_REDIS_URL, json=list(cmd), timeout=3,
+                                    headers={"Authorization": f"Bearer {_REDIS_TOKEN}"})
+        return resp.json().get("result")
     except Exception as e:
         logger.warning("[REDIS] %s 실패: %s", cmd[0], e)
         return None
@@ -301,13 +330,12 @@ async def _get(path: str, params: dict, tr_id: str) -> dict | None:
     for attempt in range(2):
         await _throttle()
         try:
-            async with httpx.AsyncClient(timeout=10, verify=False) as client:
-                resp = await client.get(
-                    f"{BASE_URL}{path}",
-                    params=params,
-                    headers=_auth_headers(token, tr_id),
-                )
-                data = resp.json()
+            resp = await _client(verify=False).get(
+                f"{BASE_URL}{path}",
+                params=params,
+                headers=_auth_headers(token, tr_id),
+            )
+            data = resp.json()
         except Exception as e:
             logger.error("[KIS] GET %s 실패: %s", path, e)
             status = locals().get("resp").status_code if locals().get("resp") is not None else "-"
@@ -905,12 +933,46 @@ def aggregate_minutes(rows: list[dict], n: int) -> list[dict]:
     return out
 
 
-async def fetch_minute_chart(code: str) -> list[dict]:
-    """당일 1분봉. KIS는 1회 30개씩이라 30분 간격 구간을 동시에 조회해 이어 붙인다."""
+_minute_locks: dict[str, asyncio.Lock] = {}
+QUICK_WINDOWS = 4   # 처음 열 때 먼저 보내는 최근 구간 수 (30분 × 4 = 2시간)
+
+
+def _windows(top: datetime, start_t: datetime, stop_t: datetime | None = None) -> list[str]:
+    """top 시각부터 30분씩 거슬러 올라가는 조회 끝 시각들 (장 시작까지, 또는 stop_t를 덮을 때까지)"""
+    out = []
+    t = top
+    while t >= start_t:   # 장 시작 봉(08:00)까지 포함
+        out.append(t.strftime("%H%M%S"))
+        if stop_t is not None and t - timedelta(minutes=29) <= stop_t:   # 1회 30개 = 30분
+            break
+        t -= timedelta(minutes=30)
+    return out
+
+
+def minute_partial(code: str) -> bool:
+    """오늘 분봉을 아직 최근 2시간치만 받아 둔 상태인지"""
+    for k, (_, v) in list(_resp_cache.items()):
+        if k.startswith(f"minute_full:{code}:") and isinstance(v, dict):
+            return bool(v.get("from"))
+    return False
+
+
+async def fetch_minute_chart(code: str, quick: bool = False) -> list[dict]:
+    """당일 1분봉. KIS는 1회 30개씩이라 30분 간격 구간을 동시에 조회해 이어 붙인다.
+    quick=True면 처음 열 때 최근 2시간만 먼저 받고(조회 4회), 나머지는 다음 호출(응답 뒤 백그라운드)에서 채운다."""
     key = f"minute:{code}"
     cached = _cache_get(key, 5)
     if cached:
         return cached
+    lock = _minute_locks.setdefault(code, asyncio.Lock())
+    async with lock:   # 같은 종목을 동시에 여러 번 받지 않도록
+        cached = _cache_get(key, 5)
+        if cached:
+            return cached
+        return await _fetch_minute(code, key, quick)
+
+
+async def _fetch_minute(code: str, key: str, quick: bool) -> list[dict]:
     # 통합 시세는 넥스트레이드 프리마켓(08:00)부터 애프터마켓(20:00)까지
     day_start, day_end = ("080000", "200000") if KIS_MARKET != "J" else ("090000", "153000")
     now = datetime.utcnow() + timedelta(hours=9)
@@ -918,8 +980,9 @@ async def fetch_minute_chart(code: str) -> list[dict]:
     if hour < day_start:
         hour = day_end   # 장 시작 전에는 직전 거래일 마감까지
 
-    # 오늘 받아 둔 1분봉(seen)과 어디까지 받았는지(upto)를 기억해, 그 뒤 구간(보통 최근 30분 1회)만 새로 받는다.
-    # 다른 인스턴스가 받아 둔 것도 공유 저장소(Upstash)에서 가져와 처음 열 때 24회 조회를 피한다.
+    # 오늘 받아 둔 1분봉(seen)과 어디까지 받았는지(upto), 아직 못 받은 앞부분(from)을 기억해
+    # 그 뒤 구간(보통 최근 30분 1회)과 빠진 앞부분만 새로 받는다.
+    # 다른 인스턴스가 받아 둔 것도 공유 저장소(Upstash)에서 가져온다.
     day = now.strftime('%Y%m%d')
     full_key = f"minute_full:{code}:{day}"
     rkey = f"drmarket:minute:{code}:{day}"
@@ -934,16 +997,21 @@ async def fetch_minute_chart(code: str) -> list[dict]:
     # 새 거래일이 시작됐거나(시각이 되돌아감), 빈 구간이 있던 하루치를 받은 지 10분이 지났으면 처음부터
     if base and (hour < base.get("upto", "") or (base.get("holes") and time.time() - base.get("full_at", 0) > 600)):
         base = None
-    upto = (base or {}).get("upto", "")
-    ends = []
-    t = datetime.strptime(hour, "%H%M%S")
-    start_t = datetime.strptime(day_start, "%H%M%S")
-    stop_t = datetime.strptime(upto, "%H%M%S") if upto else start_t - timedelta(minutes=1)
-    while t >= start_t:   # 장 시작 봉(08:00)까지 포함
-        ends.append(t.strftime("%H%M%S"))
-        if t - timedelta(minutes=29) <= stop_t:   # 이미 받은 시각까지 덮었으면 그만 (1회 30개 = 30분)
-            break
-        t -= timedelta(minutes=30)
+
+    fmt = "%H%M%S"
+    start_t = datetime.strptime(day_start, fmt)
+    top = datetime.strptime(hour, fmt)
+    if base:
+        ends = _windows(top, start_t, datetime.strptime(base["upto"], fmt))
+        if base.get("from"):   # 빠진 앞부분 채우기
+            ends += _windows(datetime.strptime(base["from"], fmt) - timedelta(minutes=30), start_t)
+        missing_from = ""
+    else:
+        ends = _windows(top, start_t)
+        missing_from = ""
+        if quick and len(ends) > QUICK_WINDOWS:
+            ends = ends[:QUICK_WINDOWS]
+            missing_from = ends[-1]
 
     async def window(end_hour: str):
         # 응답 지연으로 한 구간이 비면 차트에 구멍이 나므로 한 번 더 시도
@@ -974,18 +1042,20 @@ async def fetch_minute_chart(code: str) -> list[dict]:
             }
     rows = [seen[k] for k in sorted(seen)]
     if rows:
-        _cache_set(key, rows)
-        full = not base
+        complete = not missing_from
+        if complete:
+            _cache_set(key, rows)   # 앞부분이 빠진 상태는 짧은 캐시에 두지 않음 (바로 이어 채우도록)
+        fresh = not base or bool(base.get("from"))   # 하루치를 (처음 또는 채워서) 다 받은 순간
         state = {
-            "seen": seen, "upto": hour,
-            # 거래가 없거나 응답이 비어 빈 구간이 생긴 하루치는 10분 뒤 다시 전부 받는다 (예전 방식)
-            "holes": any(not r for r in results) if full else base.get("holes", False),
-            "full_at": time.time() if full else base.get("full_at", time.time()),
+            "seen": seen, "upto": hour, "from": missing_from,
+            # 거래가 없거나 응답이 비어 빈 구간이 생긴 하루치는 10분 뒤 다시 전부 받는다
+            "holes": any(not r for r in results) if fresh else base.get("holes", False),
+            "full_at": time.time() if fresh else base.get("full_at", time.time()),
         }
         _cache_set(full_key, state)
-        # 공유 저장소는 하루치를 받았을 때와 이후 1분에 한 번만 갱신 (요청마다 쓰지 않음)
+        # 공유 저장소는 하루치를 새로 받았을 때와 이후 1분에 한 번만 갱신 (요청마다 쓰지 않음)
         last_put = _resp_cache.get(f"minute_put:{code}")
-        if full or not last_put or time.monotonic() - last_put[0] > 60:
+        if fresh or not last_put or time.monotonic() - last_put[0] > 60:
             _cache_set(f"minute_put:{code}", True)
             await _redis("SET", rkey, json.dumps(state, separators=(",", ":")), "EX", "86400")
     return rows

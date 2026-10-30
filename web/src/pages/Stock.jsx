@@ -36,10 +36,11 @@ function remember(id, candles) {
 
 // 같은 종목의 다른 기간을 미리 받아 둔다 (분봉은 서버에서 1분봉 하나로 같이 만들어 1번이면 됨)
 function prefetchCharts(fetcher, kind, key, periods) {
+  // 가벼운 일·주·월·년봉 먼저, 분봉은 마지막 (분봉이 앞부분이면 미리 받기가 아니라 빈 상태로 남으니 기억하지 않음)
   periods.forEach((p, i) => {
     const id = `${kind}:${key}:${p}`
     if (chartCache.has(id)) return
-    setTimeout(() => fetcher(key, p).then((d) => d?.candles && remember(id, d.candles)).catch(() => {}), 300 + i * 250)
+    setTimeout(() => fetcher(key, p, true).then((d) => d?.candles && !d.partial && remember(id, d.candles)).catch(() => {}), 300 + i * 250)
   })
 }
 
@@ -51,13 +52,16 @@ function useChart(fetcher, key, period, kind = 'stock', prefetch = []) {
     let timer
     setState({ candles: chartCache.get(id) ?? null, error: false })
     const intraday = String(period).endsWith('m')
+    // 분봉 첫 조회는 최근 2시간만 먼저 받고(partial), 서버가 나머지를 채우는 동안 곧바로 다시 받는다
+    let partial = false
     const load = (first) => {
-      if (!first && document.visibilityState !== 'visible') return schedule()
-      fetcher(key, period)
+      if (!first && !partial && document.visibilityState !== 'visible') return schedule()
+      fetcher(key, period, first || partial)
         .then((d) => {
           const candles = d.candles || []
-          if (candles.length) remember(id, candles)
-          if (alive) setState({ candles, error: false })
+          partial = !!d.partial
+          if (candles.length && !partial) remember(id, candles)
+          if (alive) setState((s) => (partial && s.candles?.length > candles.length ? s : { candles, error: false }))
           if (first && prefetch.length) prefetchCharts(fetcher, kind, key, prefetch.filter((p) => p !== period))
         })
         .catch(() => alive && first && setState((s) => (s.candles?.length ? s : { candles: [], error: true })))
@@ -65,7 +69,7 @@ function useChart(fetcher, key, period, kind = 'stock', prefetch = []) {
     }
     const schedule = () => {
       const open = marketPhase().key === 'open'
-      timer = setTimeout(() => load(false), open ? (intraday ? 5000 : 60000) : 300000)
+      timer = setTimeout(() => load(false), partial ? 800 : open ? (intraday ? 5000 : 60000) : 300000)
     }
     load(true)
     return () => { alive = false; clearTimeout(timer) }
@@ -152,7 +156,7 @@ export default function Stock({ code }) {
   const info = stockMap[code]
   const live = prices[code]
   const name = info?.name || live?.name || code
-  const chart = useChart(getStockChart, code, period, 'stock', ['D', '1m', 'W', 'M', 'Y'])
+  const chart = useChart(getStockChart, code, period, 'stock', ['D', 'W', 'M', 'Y', '1m'])
   const intraday = period.endsWith('m')
 
   useEffect(() => watch(code, true), [code, watch])   // 보고 있는 종목은 1.5초마다
