@@ -77,7 +77,7 @@ async def _quote_chunk(chunk: list[list], out: dict):
             "source": "live",
             "market": "KOSPI" if names[c][1] == "P" else "KOSDAQ",
             "price": price,
-            "prev_close": int(float(o.get("inter2_prdy_clpr", 0) or 0)) or price,
+            "prev_close": price - int(float(o.get("inter2_prdy_vrss", 0) or 0)),
             "change": int(float(o.get("inter2_prdy_vrss", 0) or 0)),
             "change_rate": float(o.get("prdy_ctrt", 0) or 0),
             "volume": int(float(o.get("acml_vol", 0) or 0)),
