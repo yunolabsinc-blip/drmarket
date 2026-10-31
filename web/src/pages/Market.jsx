@@ -54,10 +54,16 @@ function IndexBoard({ global }) {
     ...indices.map((i) => ({ ...i, code: i.name === '코스피' ? '0001' : '1001', domestic: true, market: 'kr' })),
     ...(global || []),
   ]
+  // 주요 시장(코스피·코스닥·나스닥·S&P 500)만 늘 보이고 나머지는 펼쳐 보기 (펼침 여부 기억)
+  const [more, setMore] = useState(() => { try { return localStorage.getItem('drm.boardMore') === '1' } catch { return false } })
+  const toggle = () => { setMore(!more); try { localStorage.setItem('drm.boardMore', more ? '0' : '1') } catch {} }
   if (!items.length) return <Skeleton rows={3} />
+  const main = items.filter((i) => i.domestic || MAIN_GLOBAL.includes(i.name))
+  const rest = items.filter((i) => !main.includes(i))
   return (
+    <>
     <div className="board-grid">
-      {items.map((i) => {
+      {(more ? [...main, ...rest] : main).map((i) => {
         const open = isMarketOpen(i.market || 'us')
         return (
         <button key={i.name} className={`board-card ${open ? '' : 'closed'}`} disabled={!i.domestic}
@@ -75,8 +81,15 @@ function IndexBoard({ global }) {
         )
       })}
     </div>
+    {rest.length > 0 && (
+      <button className="board-more" onClick={toggle} aria-expanded={more}>
+        {more ? '접기 ▴' : `다른 지수 ${rest.length}개 더 보기 ▾`}
+      </button>
+    )}
+    </>
   )
 }
+const MAIN_GLOBAL = ['나스닥', 'S&P 500']
 
 // 지수 카드 아래 오늘의 시장 기사 (누르면 펼침 → 원문 보기)
 const MARKET_NEWS = [
