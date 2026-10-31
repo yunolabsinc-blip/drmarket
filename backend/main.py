@@ -235,14 +235,17 @@ async def get_market_indices():
 
 
 @app.get("/api/market/overview", summary="시장종합")
-async def get_market_overview():
+async def get_market_overview(background: BackgroundTasks):
     """투자자별 순매수(코스피·코스닥), 코스피 업종별 등락, 미국 주요 지수"""
-    kospi, kosdaq, sec_p, sec_q, global_ = await asyncio.gather(
-        kis.fetch_investor_flow("kospi"), kis.fetch_investor_flow("kosdaq"),
-        kis.fetch_sectors("kospi"), kis.fetch_sectors("kosdaq"), kis.fetch_global_indices(),
-    )
-    return {"investors": {"kospi": kospi, "kosdaq": kosdaq},
-            "sectors": sec_p, "sectors_by_market": {"kospi": sec_p, "kosdaq": sec_q}, "global": global_}
+    async def compute():
+        kospi, kosdaq, sec_p, sec_q, global_ = await asyncio.gather(
+            kis.fetch_investor_flow("kospi"), kis.fetch_investor_flow("kosdaq"),
+            kis.fetch_sectors("kospi"), kis.fetch_sectors("kosdaq"), kis.fetch_global_indices(),
+        )
+        return {"investors": {"kospi": kospi, "kosdaq": kosdaq},
+                "sectors": sec_p, "sectors_by_market": {"kospi": sec_p, "kosdaq": sec_q}, "global": global_}
+    # 새로 켜진 서버도 다른 서버가 받아 둔 결과를 바로 줌 (1초 넘게 걸리던 첫 응답)
+    return await _shared("overview", 10, compute, background)
 
 
 # ──────────────────────────────────────────────

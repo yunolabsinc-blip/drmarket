@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useMarket } from '../lib/store'
-import { getMarketOverview } from '../lib/api'
+import { getCalendar, getMarketNews, getMarketOverview } from '../lib/api'
 import { fmtIndex, fmtRate, fmtWonShort, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import { Sparkline } from '../components/Chart'
-import MarketNews from '../components/NewsList'
+import MarketNews, { TOPICS } from '../components/NewsList'
 import Calendar from '../components/Calendar'
 import { Disclaimer, Section, Skeleton, StatusLine } from '../components/ui'
 import { ThemeHeadline } from '../components/ThemeGrid'
-import { useKeyNews } from '../lib/themeNews'
+import { prefetchKeyNews, useKeyNews } from '../lib/themeNews'
 import { track } from '../lib/analytics'
 
 const TABS = [
@@ -205,6 +205,13 @@ function Sectors({ sectors }) {
 function Overview() {
   const { data, failed } = useOverview(true)
   const [mkt, setMkt] = useState('kospi')
+  // 업종을 누르자마자 기사가 보이게 지금 시장의 업종 기사를 한 번에 미리 받아 둠
+  const sectorKey = (data?.sectors_by_market?.[mkt] || []).map((s) => s.name).join('|')
+  useEffect(() => {
+    if (!sectorKey) return
+    const t = setTimeout(() => prefetchKeyNews(sectorKey.split('|').map((n) => `sector:${n}`)), 1500)
+    return () => clearTimeout(t)
+  }, [sectorKey])
   return (
     <>
       <IndexBoard global={data?.global} />
@@ -227,6 +234,14 @@ function Overview() {
 
 export default function Market({ tab }) {
   const active = TABS.find((t) => t.id === tab) ? tab : 'overview'
+  // 뉴스·일정 탭도 누르자마자 보이게 미리 받아 둠 (지난 결과가 있으면 그것부터 보여 줌)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (active !== 'news') getMarketNews(TOPICS[0].id).catch(() => {})
+      if (active !== 'calendar') getCalendar().catch(() => {})
+    }, 1000)
+    return () => clearTimeout(t)
+  }, [])
   return (
     <main className="page">
       <h1 className="page-title">{active === 'news' ? '뉴스' : active === 'calendar' ? '시장 일정' : '시장종합'}</h1>

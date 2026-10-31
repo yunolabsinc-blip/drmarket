@@ -68,3 +68,8 @@ const THEME_IDS = THEMES.map((t) => t.id)
 export function useThemeNews() {
   return useKeyNews(THEME_IDS)
 }
+
+// 아직 화면에 없는 기사를 미리 받아 둠 (업종을 누르자마자 기사가 보이게)
+export function prefetchKeyNews(ids) {
+  request(ids)
+}
