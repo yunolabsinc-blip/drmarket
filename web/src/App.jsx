@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { MarketProvider } from './lib/store'
 import { useRoute } from './lib/router'
 import { TabBar, TopBar } from './components/ui'
@@ -11,11 +11,13 @@ import Themes, { ThemeDetail } from './pages/Themes'
 import Rank from './pages/Rank'
 import Watch from './pages/Watch'
 import Stock, { IndexPage } from './pages/Stock'
-import Admin from './pages/Admin'
 import Feedback from './components/Feedback'
 import { InstallGuide, useInstallGuide } from './components/Install'
 import { setRoute, track } from './lib/analytics'
 import { useTabSwipe } from './lib/swipe'
+
+// 관리자 화면은 쓰는 사람이 드물어 필요할 때만 받음
+const Admin = lazy(() => import('./pages/Admin'))
 
 function Screen({ route, openSearch }) {
   switch (route.page) {
@@ -26,7 +28,7 @@ function Screen({ route, openSearch }) {
     case 'watch': return <Watch onSearch={openSearch} />
     case 'stock': return <Stock key={route.param} code={route.param || ''} />
     case 'index': return <IndexPage key={route.param} code={route.param || ''} />
-    case 'admin': return <Admin />
+    case 'admin': return <Suspense fallback={null}><Admin /></Suspense>
     default: return <Home />
   }
 }
