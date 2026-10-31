@@ -150,6 +150,10 @@ _CDN_SKIP = ("/orderbook", "/chart")
 async def cdn_cache(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
+    # CDN에 저장되는 응답에는 접속 허용(CORS) 표시를 늘 붙인다 — 브라우저가 아닌 곳에서 먼저 받아 간 응답이
+    # 표시 없이 저장되면, 그걸 받은 앱 화면이 막혔다 (시장종합·차트가 가끔 "불러오지 못했습니다")
+    if request.method == "GET" and allowed_origins == ["*"] and "access-control-allow-origin" not in response.headers:
+        response.headers["Access-Control-Allow-Origin"] = "*"
     if request.method != "GET" or response.status_code != 200 or "cdn-cache-control" in response.headers:
         return response
     if path.endswith(_CDN_SKIP):
