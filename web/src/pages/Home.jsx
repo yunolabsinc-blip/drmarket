@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import ThemeGrid, { SortToggle } from '../components/ThemeGrid'
+import ThemeGrid, { SORTS } from '../components/ThemeGrid'
 import ThemeMap from '../components/ThemeMap'
 import { Headlines } from '../components/NewsList'
 import THEMES from '../data/themes.json'
@@ -62,20 +62,26 @@ function TopValue() {
 export default function Home() {
   const [sort, setSort] = useState(() => { try { return localStorage.getItem('drm.themeSort') || 'value' } catch { return 'value' } })
   const changeSort = (v) => { setSort(v); try { localStorage.setItem('drm.themeSort', v) } catch {} }
-  // 테마를 지도(원)로 볼지 목록(카드)으로 볼지 — 고른 것을 기억
-  const [view, setView] = useState(() => { try { return localStorage.getItem('drm.themeView') || 'map' } catch { return 'map' } })
-  const changeView = (v) => { setView(v); try { localStorage.setItem('drm.themeView', v) } catch {} }
+  // 거래대금 집중 · 상승률 · 테마 지도를 한 줄에서 고름 (지도를 골랐는지는 따로 기억)
+  const [view, setView] = useState(() => { try { return localStorage.getItem('drm.themeView') || 'card' } catch { return 'card' } })
+  const pick = (id) => {
+    const next = id === 'map' ? 'map' : 'card'
+    setView(next)
+    try { localStorage.setItem('drm.themeView', next) } catch {}
+    if (id !== 'map') changeSort(id)
+  }
+  const tabs = [...SORTS, { id: 'map', label: '테마 지도' }]
+  const current = view === 'map' ? 'map' : sort
   return (
     <main className="page">
       <StatusLine />
       <IndexCards />
       <Section title="실시간 테마" more={{ href: '#/themes', label: '전체 테마' }}>
-        <div className="theme-view-bar">
-          <div className="sort-toggle" role="tablist">
-            <button role="tab" aria-selected={view === 'map'} className={view === 'map' ? 'on' : ''} onClick={() => changeView('map')}>테마 지도</button>
-            <button role="tab" aria-selected={view === 'card'} className={view === 'card' ? 'on' : ''} onClick={() => changeView('card')}>목록</button>
-          </div>
-          {view === 'card' && <SortToggle value={sort} onChange={changeSort} />}
+        <div className="sort-toggle" role="tablist">
+          {tabs.map((t) => (
+            <button key={t.id} role="tab" aria-selected={current === t.id} className={current === t.id ? 'on' : ''}
+              onClick={() => pick(t.id)}>{t.label}</button>
+          ))}
         </div>
         {view === 'map' ? <ThemeMap /> : <ThemeGrid sort={sort} limit={6} />}
         <a className="btn wide" href="#/themes">전체 테마 보기 ({THEME_COUNT}개) →</a>

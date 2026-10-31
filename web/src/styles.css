@@ -602,8 +602,6 @@ html[data-swipe="prev"] main.page { animation: swipe-prev .26s ease-out; }
 @media (prefers-reduced-motion: reduce) { html[data-swipe] main.page { animation: none; } }
 
 /* ───────── 테마 지도 ───────── */
-.theme-view-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
-.theme-view-bar .sort-toggle { margin-bottom: 10px; }
 .theme-map { padding: 10px 10px 8px; }
 .theme-map svg { display: block; width: 100%; height: auto; }
 .tm-bubble { cursor: pointer; transition: transform 0.6s ease; }
