@@ -60,18 +60,9 @@ function TopValue() {
 }
 
 export default function Home() {
-  const [sort, setSort] = useState(() => { try { return localStorage.getItem('drm.themeSort') || 'value' } catch { return 'value' } })
-  const changeSort = (v) => { setSort(v); try { localStorage.setItem('drm.themeSort', v) } catch {} }
-  // 거래대금 집중 · 상승률 · 테마 지도를 한 줄에서 고름 (지도를 골랐는지는 따로 기억)
-  const [view, setView] = useState(() => { try { return localStorage.getItem('drm.themeView') || 'card' } catch { return 'card' } })
-  const pick = (id) => {
-    const next = id === 'map' ? 'map' : 'card'
-    setView(next)
-    try { localStorage.setItem('drm.themeView', next) } catch {}
-    if (id !== 'map') changeSort(id)
-  }
+  // 거래대금 집중 · 상승률 · 테마 지도를 한 줄에서 고름 — 첫 화면은 늘 거래대금 집중
+  const [current, setCurrent] = useState('value')
   const tabs = [...SORTS, { id: 'map', label: '테마 지도' }]
-  const current = view === 'map' ? 'map' : sort
   return (
     <main className="page">
       <StatusLine />
@@ -80,10 +71,10 @@ export default function Home() {
         <div className="sort-toggle" role="tablist">
           {tabs.map((t) => (
             <button key={t.id} role="tab" aria-selected={current === t.id} className={current === t.id ? 'on' : ''}
-              onClick={() => pick(t.id)}>{t.label}</button>
+              onClick={() => setCurrent(t.id)}>{t.label}</button>
           ))}
         </div>
-        {view === 'map' ? <ThemeMap /> : <ThemeGrid sort={sort} limit={6} />}
+        {current === 'map' ? <ThemeMap /> : <ThemeGrid sort={current} limit={6} />}
         <a className="btn wide" href="#/themes">전체 테마 보기 ({THEME_COUNT}개) →</a>
       </Section>
       <Section title="거래대금 상위" more={{ href: '#/rank', label: '전체 순위' }}>
