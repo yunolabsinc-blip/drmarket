@@ -4,7 +4,7 @@ import { getDetail, getIndexChart, getLimitUps, getNews, getStockChart, getStock
 import { fmtChange, fmtIndex, fmtPrice, fmtRate, fmtVolume, fmtWonShort, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import Chart from '../components/Chart'
-import OrderBook from '../components/OrderBook'
+import OrderBook, { prefetchOrderbook } from '../components/OrderBook'
 import { Disclaimer, Empty, Rate, StarIcon, SubBar } from '../components/ui'
 import { NewsItems } from '../components/NewsList'
 import { EventRows } from '../components/Calendar'
@@ -160,6 +160,10 @@ export default function Stock({ code }) {
   const intraday = period.endsWith('m')
 
   useEffect(() => watch(code, true), [code, watch])   // 보고 있는 종목은 1.5초마다
+  useEffect(() => {   // 차트가 먼저 뜨게 조금 뒤에 호가를 미리 받아 둠
+    const t = setTimeout(() => prefetchOrderbook(code), 1200)
+    return () => clearTimeout(t)
+  }, [code])
   useEffect(() => {
     let alive = true
     let timer

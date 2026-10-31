@@ -123,7 +123,8 @@ def poll_hint() -> int:
     if now - _load["rate_limited_at"] < 30:
         return 8000
     n = len(_book_watch)
-    return 3000 if n <= 8 else 5000 if n <= 20 else 8000
+    # 증권사 한도(초당 20회) 중 순위 계산이 ~6회를 쓰므로, 보는 종목이 적을 때만 1초
+    return 1000 if n <= 4 else 1500 if n <= 8 else 3000 if n <= 20 else 5000 if n <= 40 else 8000
 
 
 def _cache_get(key: str, ttl: float):
