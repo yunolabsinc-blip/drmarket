@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import ThemeGrid, { SortToggle } from '../components/ThemeGrid'
+import ThemeMap from '../components/ThemeMap'
 import { Headlines } from '../components/NewsList'
 import THEMES from '../data/themes.json'
 const THEME_COUNT = THEMES.length
@@ -61,13 +62,22 @@ function TopValue() {
 export default function Home() {
   const [sort, setSort] = useState(() => { try { return localStorage.getItem('drm.themeSort') || 'value' } catch { return 'value' } })
   const changeSort = (v) => { setSort(v); try { localStorage.setItem('drm.themeSort', v) } catch {} }
+  // 테마를 지도(원)로 볼지 목록(카드)으로 볼지 — 고른 것을 기억
+  const [view, setView] = useState(() => { try { return localStorage.getItem('drm.themeView') || 'map' } catch { return 'map' } })
+  const changeView = (v) => { setView(v); try { localStorage.setItem('drm.themeView', v) } catch {} }
   return (
     <main className="page">
       <StatusLine />
       <IndexCards />
       <Section title="실시간 테마" more={{ href: '#/themes', label: '전체 테마' }}>
-        <SortToggle value={sort} onChange={changeSort} />
-        <ThemeGrid sort={sort} limit={6} />
+        <div className="theme-view-bar">
+          <div className="sort-toggle" role="tablist">
+            <button role="tab" aria-selected={view === 'map'} className={view === 'map' ? 'on' : ''} onClick={() => changeView('map')}>테마 지도</button>
+            <button role="tab" aria-selected={view === 'card'} className={view === 'card' ? 'on' : ''} onClick={() => changeView('card')}>목록</button>
+          </div>
+          {view === 'card' && <SortToggle value={sort} onChange={changeSort} />}
+        </div>
+        {view === 'map' ? <ThemeMap /> : <ThemeGrid sort={sort} limit={6} />}
         <a className="btn wide" href="#/themes">전체 테마 보기 ({THEME_COUNT}개) →</a>
       </Section>
       <Section title="거래대금 상위" more={{ href: '#/rank', label: '전체 순위' }}>

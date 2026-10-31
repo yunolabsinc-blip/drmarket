@@ -368,7 +368,7 @@ export function IndexPage({ code }) {
       <SubBar title="" />
       <main className="page">
         <div className="stock-head">
-          <span className="stock-meta">{domestic ? '지수' : `${world?.delay || '지연'} 시세${world?.date ? ` · ${world.date} 기준` : ''}`}</span>
+          <span className="stock-meta">{domestic ? '지수' : [world?.date && `${world.date} 기준`, world?.delay && world.delay !== '실시간' && world.delay].filter(Boolean).join(' · ') || '해외'}</span>
           <h1 className="stock-title">{name}</h1>
           {cur ? (
             <>
