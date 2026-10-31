@@ -28,6 +28,7 @@ import macro_events
 import news
 import ranking
 import stock_master
+import world
 import stats
 
 # ──────────────────────────────────────────────
@@ -238,10 +239,15 @@ async def get_market_indices():
 async def get_market_overview(background: BackgroundTasks):
     """투자자별 순매수(코스피·코스닥), 코스피 업종별 등락, 미국 주요 지수"""
     async def compute():
-        kospi, kosdaq, sec_p, sec_q, global_ = await asyncio.gather(
+        kospi, kosdaq, sec_p, sec_q, global_, night = await asyncio.gather(
             kis.fetch_investor_flow("kospi"), kis.fetch_investor_flow("kosdaq"),
-            kis.fetch_sectors("kospi"), kis.fetch_sectors("kosdaq"), kis.fetch_global_indices(),
+            kis.fetch_sectors("kospi"), kis.fetch_sectors("kosdaq"), world.fetch_world(), kis.fetch_night_futures(),
         )
+        if not global_:   # 네이버를 못 받으면 한투 해외지수로
+            global_ = await kis.fetch_global_indices()
+        if night:   # 코스피200 야간선물은 해외 선물 뒤에
+            at = next((i + 1 for i, g in enumerate(global_) if g["code"] == "EScv1"), len(global_))
+            global_ = [*global_[:at], night, *global_[at:]]
         return {"investors": {"kospi": kospi, "kosdaq": kosdaq},
                 "sectors": sec_p, "sectors_by_market": {"kospi": sec_p, "kosdaq": sec_q}, "global": global_}
     # 새로 켜진 서버도 다른 서버가 받아 둔 결과를 바로 줌 (1초 넘게 걸리던 첫 응답)
@@ -374,6 +380,14 @@ async def get_stock_chart(background: BackgroundTasks, code: str,
     if body.get("partial"):
         return JSONResponse(body, headers={"Cache-Control": "no-store"})
     return _cdn(body, 20, 120) if open_ else _cdn(body, 300, 3600)
+
+
+@app.get("/api/world/{code}/chart", summary="해외 지수·선물·환율·유가 차트")
+async def get_world_chart(code: str, period: str = Query("D", description="D/W/M/Y (환율·유가는 D만)")):
+    """네이버 증권 지연 시세 기준"""
+    candles = await world.fetch_world_chart(code, period)
+    body = {"period": period, "candles": candles}
+    return _cdn(body, 300, 3600) if candles else body
 
 
 @app.get("/api/index/{code}/chart", summary="지수 차트")

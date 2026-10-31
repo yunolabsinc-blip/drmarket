@@ -1236,3 +1236,39 @@ async def fetch_global_indices() -> list[dict]:
     if results:
         _cache_set("global", results)
     return results
+
+
+def _kospi200_front_month(now: datetime | None = None) -> str:
+    """코스피200 선물 최근월물 코드 (예: 2026년 12월물 → A01612). 만기는 3·6·9·12월 둘째 목요일"""
+    now = now or datetime.utcnow() + timedelta(hours=9)
+    y, m = now.year, now.month
+    while True:
+        q = ((m - 1) // 3 + 1) * 3
+        if q > 12:
+            y, q = y + 1, 3
+        first = datetime(y, q, 1)
+        expiry = first + timedelta(days=(3 - first.weekday()) % 7 + 7)   # 둘째 목요일
+        if (y, q) != (now.year, now.month) or now.date() <= expiry.date():
+            return f"A01{y % 10}{q:02d}"
+        y, m = (y, q + 1) if q < 12 else (y + 1, 1)
+
+
+async def fetch_night_futures() -> dict | None:
+    """코스피200 야간선물 (한국거래소 야간시장, 18:00~다음날 06:00) — 기준가는 그날 주간 종가"""
+    cached = _cache_get("night_futures", 30)
+    if cached:
+        return cached
+    code = _kospi200_front_month()
+    d = await _get("/uapi/domestic-futureoption/v1/quotations/inquire-price",
+                   {"FID_COND_MRKT_DIV_CODE": "CM", "FID_INPUT_ISCD": code}, "FHMIF10000000")
+    o = (d or {}).get("output1") or {}
+    value = _num(o.get("futs_prpr"))
+    if value <= 0:
+        return None
+    item = {
+        "code": code, "name": "코스피200 야간선물", "market": "kn", "source": "live",
+        "value": value, "change": _num(o.get("futs_prdy_vrss")), "changeRate": _num(o.get("futs_prdy_ctrt")),
+        "date": "", "spark": None,
+    }
+    _cache_set("night_futures", item)
+    return item

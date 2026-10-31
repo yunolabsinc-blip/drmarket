@@ -58,6 +58,7 @@ export const getMarketOverview = endpoint(() => '/api/market/overview', { timeou
 export const getDetail = endpoint((code) => `/api/stock/${code}/detail`)
 export const getStockChart = (code, period, quick) => api(`/api/stock/${code}/chart?period=${period}${quick ? '&quick=1' : ''}`, { timeout: 30000 })
 export const getIndexChart = endpoint((code, period) => `/api/index/${code}/chart?period=${period}`)
+export const getWorldChart = endpoint((code, period) => `/api/world/${encodeURIComponent(code)}/chart?period=${period}`)
 export const getMarketNews = endpoint((topic) => `/api/news?topic=${topic}`)
 export const getHeadlines = endpoint((count = 5) => `/api/news/headlines?count=${count}`)
 export const getCalendar = endpoint(() => '/api/market/calendar', { timeout: 40000 })

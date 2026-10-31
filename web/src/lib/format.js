@@ -69,6 +69,7 @@ export function isMarketOpen(market, now = new Date()) {
   const day = t.getDay()
   const m = t.getHours() * 60 + t.getMinutes()
   if (market === 'us') return day >= 1 && day <= 5 && m >= 570 && m < 960
+  if (market === 'kn') return (day >= 1 && day <= 5 && m >= 1080) || (day >= 2 && day <= 6 && m < 360)   // 한국거래소 야간 18:00~06:00
   if (market === 'fx') return (day >= 1 && day <= 5 && m >= 540) || (day >= 2 && day <= 6 && m < 120)
   return day >= 1 && day <= 5 && m >= 540 && m < 930
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { themesOfStock, useMarket } from '../lib/store'
-import { getDetail, getIndexChart, getLimitUps, getNews, getStockChart, getStockEvents } from '../lib/api'
+import { getDetail, getIndexChart, getLimitUps, getMarketOverview, getNews, getStockChart, getStockEvents, getWorldChart } from '../lib/api'
 import { fmtChange, fmtIndex, fmtPrice, fmtRate, fmtVolume, fmtWonShort, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import Chart from '../components/Chart'
@@ -350,17 +350,25 @@ const INDEX_NAMES = { '0001': '코스피', '1001': '코스닥' }
 
 export function IndexPage({ code }) {
   const { indices } = useMarket()
+  // 코스피·코스닥은 한투, 나머지(해외 지수·선물·환율·유가)는 시장종합에서 받은 네이버 지연 시세
+  const domestic = !!INDEX_NAMES[code]
+  const [overview, setOverview] = useState(() => getMarketOverview.peek())
+  useEffect(() => { if (!domestic) getMarketOverview().then(setOverview).catch(() => {}) }, [code])
+  const world = domestic ? null : overview?.global?.find((g) => g.code === code)
+  const periods = domestic ? INDEX_PERIODS : INDEX_PERIODS.filter((p) => (world?.periods || ['D']).includes(p.id))
   const [period, setPeriodState] = useState(() => loadPeriod('drm.indexPeriod', 'D'))
   const setPeriod = (v) => { setPeriodState(v); savePeriod('drm.indexPeriod', v) }
-  const chart = useChart(getIndexChart, code, period, 'index', ['D', 'W', 'M', 'Y'])
-  const name = INDEX_NAMES[code] || '지수'
-  const cur = indices.find((i) => i.name === name)
+  const shown = periods.some((p) => p.id === period) ? period : 'D'
+  const chart = useChart(domestic ? getIndexChart : getWorldChart, code, shown, domestic ? 'index' : 'world',
+    domestic ? ['D', 'W', 'M', 'Y'] : periods.map((p) => p.id))
+  const name = INDEX_NAMES[code] || world?.name || '지수'
+  const cur = domestic ? indices.find((i) => i.name === name) : world
   return (
     <>
       <SubBar title="" />
       <main className="page">
         <div className="stock-head">
-          <span className="stock-meta">지수</span>
+          <span className="stock-meta">{domestic ? '지수' : `${world?.delay || '지연'} 시세${world?.date ? ` · ${world.date} 기준` : ''}`}</span>
           <h1 className="stock-title">{name}</h1>
           {cur ? (
             <>
@@ -373,8 +381,8 @@ export function IndexPage({ code }) {
         </div>
         <div className="card chart-card">
           {chart.candles === null ? <div className="skeleton chart-skel" /> :
-            <Chart candles={chart.candles} resetKey={`${code}:${period}`} format={fmtIndex} />}
-          <PeriodTabs periods={INDEX_PERIODS} value={period} onChange={setPeriod} />
+            <Chart candles={chart.candles} resetKey={`${code}:${shown}`} format={fmtIndex} />}
+          {periods.length > 1 && <PeriodTabs periods={periods} value={shown} onChange={setPeriod} />}
         </div>
         <Disclaimer />
       </main>

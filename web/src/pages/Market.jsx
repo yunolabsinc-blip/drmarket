@@ -64,10 +64,11 @@ function IndexBoard({ global }) {
     <>
     <div className="board-grid">
       {(more ? [...main, ...rest] : main).map((i) => {
-        const open = isMarketOpen(i.market || 'us')
+        // 서버가 장 상태를 알려 주면 그대로(선물·유가는 거의 24시간), 아니면 시간으로 판단
+        const open = typeof i.open === 'boolean' ? i.open : isMarketOpen(i.market || 'us')
         return (
-        <button key={i.name} className={`board-card ${open ? '' : 'closed'}`} disabled={!i.domestic}
-          onClick={() => i.domestic && go(`/index/${i.code}`)}>
+        <button key={i.name} className={`board-card ${open ? '' : 'closed'}`} disabled={!i.domestic && !i.periods}
+          onClick={() => (i.domestic || i.periods) && go(`/index/${encodeURIComponent(i.code)}`)}>
           <span className="board-name">
             <span className="board-title"><i className={`board-light ${open ? 'on' : 'off'}`} aria-label={open ? '장 열림' : '장 닫힘'} />{i.name}</span>
             {i.date && <small>{i.date} {open ? '' : '종가'}</small>}
