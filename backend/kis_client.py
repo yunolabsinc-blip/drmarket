@@ -111,7 +111,7 @@ _resp_cache: dict[str, tuple[float, Any]] = {}
 # 최근 KIS 오류 (디버그용, /api/token/status 에 노출)
 last_errors: dict[str, str] = {}
 # 부하 감지: 최근 호출 한도 초과 시각, 최근 10초간 호가를 본 종목들
-_load = {"rate_limited_at": 0.0}
+_load = {"rate_limited_at": float("-inf")}   # 0이면 막 켜진 서버(monotonic이 작음)를 한도 초과 직후로 오인
 _book_watch: dict[str, float] = {}
 
 
