@@ -50,12 +50,15 @@ function flush() {
   const body = JSON.stringify({ v: visitor, pages, events })
   pages = {}
   events = {}
+  // sendBeacon은 항상 쿠키를 붙여 보내서, 서버의 CORS 응답(*)이 브라우저에서 막힘
+  // → 쿠키 없이 보내는 keepalive fetch를 쓰고(화면을 닫아도 전송됨), 안 될 때만 sendBeacon
   try {
-    const blob = new Blob([body], { type: 'application/json' })
-    if (!navigator.sendBeacon?.(`${API_BASE}/api/stats`, blob)) {
-      fetch(`${API_BASE}/api/stats`, { method: 'POST', body, headers: { 'Content-Type': 'application/json' }, keepalive: true }).catch(() => {})
-    }
-  } catch {}
+    fetch(`${API_BASE}/api/stats`, {
+      method: 'POST', body, headers: { 'Content-Type': 'application/json' }, keepalive: true, credentials: 'omit',
+    }).catch(() => {})
+  } catch {
+    try { navigator.sendBeacon?.(`${API_BASE}/api/stats`, new Blob([body], { type: 'application/json' })) } catch {}
+  }
 }
 
 // 화면을 떠나거나 백그라운드로 갈 때, 그리고 2분마다 전송
