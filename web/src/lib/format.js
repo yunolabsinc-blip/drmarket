@@ -60,3 +60,15 @@ export function marketPhase(now = new Date()) {
 
 export const fmtTime = (d) =>
   d ? d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : ''
+
+// 지수 카드의 장 열림 표시: kr 한국거래소 정규장(09:00~15:30), us 뉴욕 정규장(서머타임 자동), fx 서울 외환시장(09:00~다음날 02:00)
+// 공휴일은 따로 반영하지 않음
+export function isMarketOpen(market, now = new Date()) {
+  const zone = market === 'us' ? 'America/New_York' : 'Asia/Seoul'
+  const t = new Date(now.toLocaleString('en-US', { timeZone: zone }))
+  const day = t.getDay()
+  const m = t.getHours() * 60 + t.getMinutes()
+  if (market === 'us') return day >= 1 && day <= 5 && m >= 570 && m < 960
+  if (market === 'fx') return (day >= 1 && day <= 5 && m >= 540) || (day >= 2 && day <= 6 && m < 120)
+  return day >= 1 && day <= 5 && m >= 540 && m < 930
+}

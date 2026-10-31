@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMarket } from '../lib/store'
 import { getCalendar, getMarketNews, getMarketOverview } from '../lib/api'
-import { fmtIndex, fmtRate, fmtWonShort, marketPhase, tone } from '../lib/format'
+import { fmtIndex, fmtRate, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import { Sparkline } from '../components/Chart'
 import MarketNews, { TOPICS } from '../components/NewsList'
@@ -47,24 +47,33 @@ const fmtDate = (d) => (d && d.length === 8 ? `${Number(d.slice(4, 6))}월 ${Num
 
 function IndexBoard({ global }) {
   const { indices } = useMarket()
+  // 장 열림 표시가 시간 따라 바뀌게 1분마다 다시 그림
+  const [, setTick] = useState(0)
+  useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 60000); return () => clearInterval(t) }, [])
   const items = [
-    ...indices.map((i) => ({ ...i, code: i.name === '코스피' ? '0001' : '1001', domestic: true })),
+    ...indices.map((i) => ({ ...i, code: i.name === '코스피' ? '0001' : '1001', domestic: true, market: 'kr' })),
     ...(global || []),
   ]
   if (!items.length) return <Skeleton rows={3} />
   return (
     <div className="board-grid">
-      {items.map((i) => (
-        <button key={i.name} className="board-card" disabled={!i.domestic}
+      {items.map((i) => {
+        const open = isMarketOpen(i.market || 'us')
+        return (
+        <button key={i.name} className={`board-card ${open ? '' : 'closed'}`} disabled={!i.domestic}
           onClick={() => i.domestic && go(`/index/${i.code}`)}>
-          <span className="board-name">{i.name}{i.date && <small>{i.date} 종가</small>}</span>
+          <span className="board-name">
+            <span className="board-title"><i className={`board-light ${open ? 'on' : 'off'}`} aria-label={open ? '장 열림' : '장 닫힘'} />{i.name}</span>
+            {i.date && <small>{i.date} {open ? '' : '종가'}</small>}
+          </span>
           <b className="board-value">{fmtIndex(i.value)}</b>
           <span className={`board-change ${tone(i.changeRate)}`}>
             {i.change > 0 ? '+' : ''}{i.change?.toFixed(2)} {fmtRate(i.changeRate)}
           </span>
           {i.spark && <span className="board-spark"><Sparkline values={i.spark} width={56} height={22} /></span>}
         </button>
-      ))}
+        )
+      })}
     </div>
   )
 }

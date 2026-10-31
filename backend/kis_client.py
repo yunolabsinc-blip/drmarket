@@ -1199,7 +1199,11 @@ async def fetch_sectors(market: str = "kospi") -> list[dict]:
     return rows
 
 
-_GLOBAL_INDICES = [("COMP", "나스닥"), ("SPX", "S&P 500"), (".DJI", "다우존스"), ("NDX", "나스닥 100")]
+# (시장 구분 N=해외지수·X=환율, 코드, 이름, 장 시간 구분) — 받지 못한 항목은 화면에서 빠짐
+_GLOBAL_INDICES = [
+    ("N", "COMP", "나스닥", "us"), ("N", "SPX", "S&P 500", "us"), ("N", ".DJI", "다우존스", "us"),
+    ("N", "NDX", "나스닥 100", "us"), ("N", "SOX", "필라델피아 반도체", "us"), ("X", "FX@KRW", "원/달러 환율", "fx"),
+]
 
 
 async def fetch_global_indices() -> list[dict]:
@@ -1210,10 +1214,10 @@ async def fetch_global_indices() -> list[dict]:
     end = datetime.utcnow()
     start = end - timedelta(days=20)
     results = []
-    for code, name in _GLOBAL_INDICES:
+    for div, code, name, market in _GLOBAL_INDICES:
         data = await _get(
             "/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
-            {"FID_COND_MRKT_DIV_CODE": "N", "FID_INPUT_ISCD": code, "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
+            {"FID_COND_MRKT_DIV_CODE": div, "FID_INPUT_ISCD": code, "FID_INPUT_DATE_1": start.strftime("%Y%m%d"),
              "FID_INPUT_DATE_2": end.strftime("%Y%m%d"), "FID_PERIOD_DIV_CODE": "D"},
             "FHKST03030100",
         )
@@ -1223,7 +1227,7 @@ async def fetch_global_indices() -> list[dict]:
         cur, prev = _num(days[0]["ovrs_nmix_prpr"]), _num(days[1]["ovrs_nmix_prpr"])
         d = days[0]["stck_bsop_date"]
         results.append({
-            "code": code, "name": name, "source": "live",
+            "code": code, "name": name, "market": market, "source": "live",
             "value": cur, "change": round(cur - prev, 2),
             "changeRate": round((cur - prev) / prev * 100, 2) if prev else 0,
             "date": f"{d[4:6]}/{d[6:]}",
