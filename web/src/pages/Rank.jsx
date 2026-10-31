@@ -13,9 +13,10 @@ const TYPES = [
 
 export function useRanking(type) {
   const { stockMap, stockList, prices, watch } = useMarket()
-  const [raw, setRaw] = useState([])
-  const [count, setCount] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const saved = () => (getRanking.peek(type)?.ranking || []).filter((r) => r.source === 'live')
+  const [raw, setRaw] = useState(saved)
+  const [count, setCount] = useState(() => getRanking.peek(type)?.count || 0)
+  const [loading, setLoading] = useState(() => !saved().length)
   useEffect(() => {
     let stopped = false
     let timer
@@ -32,8 +33,10 @@ export function useRanking(type) {
         timer = setTimeout(load, !ok ? 6000 : marketPhase().key === 'open' ? 5000 : 120000)
       }
     }
-    setRaw([])
-    setLoading(true)
+    const last = saved()   // 다른 순위로 바꿀 때도 마지막 결과를 먼저
+    setRaw(last)
+    setCount(getRanking.peek(type)?.count || 0)
+    setLoading(!last.length)
     load()
     return () => {
       stopped = true

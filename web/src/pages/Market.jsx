@@ -18,7 +18,7 @@ const TABS = [
 ]
 
 function useOverview(active) {
-  const [data, setData] = useState(null)
+  const [data, setData] = useState(() => getMarketOverview.peek() || null)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
     if (!active) return

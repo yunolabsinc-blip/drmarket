@@ -9,9 +9,20 @@ const listeners = new Set()
 let pending = new Set()
 let timer = null
 const TTL = 300000
+const SAVE_KEY = 'drm.themeNews'
+
+// 지난번 기사를 기억해 두었다가 앱을 열자마자 보여 줌 (at: 0 → 바로 다시 받음)
+try {
+  for (const [id, item] of Object.entries(JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'))) cache.set(id, { item, at: 0 })
+} catch {}
 
 function notify() {
   listeners.forEach((fn) => fn())
+  try {
+    const out = {}
+    for (const [id, c] of cache) if (c.item) out[id] = c.item
+    localStorage.setItem(SAVE_KEY, JSON.stringify(out))
+  } catch {}
 }
 
 function flush() {

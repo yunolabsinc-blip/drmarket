@@ -142,14 +142,17 @@ function Stat({ label, value, className }) {
 
 export default function Stock({ code }) {
   const { prices, stockMap, favorites, toggleFavorite, memos, setMemo, watch, flash } = useMarket()
-  const [detail, setDetail] = useState(null)
+  const [detail, setDetail] = useState(() => getDetail.peek(code) || null)
   const [failed, setFailed] = useState(false)
   const [period, setPeriodState] = useState(() => loadPeriod('drm.chartPeriod', 'D'))
   const setPeriod = (v) => { setPeriodState(v); savePeriod('drm.chartPeriod', v); track('chart_period') }
   const [view, setView] = useState('chart')
-  const [news, setNews] = useState([])
-  const [limits, setLimits] = useState(null)
-  const [events, setEvents] = useState([])
+  const [news, setNews] = useState(() => {
+    const n = stockMap[code]?.name || prices[code]?.name
+    return (n && getNews.peek(code, n)?.news) || []
+  })
+  const [limits, setLimits] = useState(() => getLimitUps.peek(code) || null)
+  const [events, setEvents] = useState(() => getStockEvents.peek(code)?.events || [])
   const [showLimits, setShowLimits] = useState(false)
   const [memo, setMemoText] = useState(memos[code] || '')
   const [saved, setSaved] = useState(false)
@@ -167,7 +170,7 @@ export default function Stock({ code }) {
   useEffect(() => {
     let alive = true
     let timer
-    setDetail(null)
+    setDetail(getDetail.peek(code) || null)
     setFailed(false)
     const load = () =>
       getDetail(code)
@@ -179,15 +182,17 @@ export default function Stock({ code }) {
   }, [code])
   useEffect(() => {
     if (!name || name === code) return
-    getNews(code, name).then((d) => setNews(d.news || [])).catch(() => setNews([]))
+    const last = getNews.peek(code, name)?.news
+    if (last) setNews(last)
+    getNews(code, name).then((d) => setNews(d.news || [])).catch(() => setNews((n) => n))
   }, [code, name])
   useEffect(() => setMemoText(memos[code] || ''), [code])
   useEffect(() => {
     let alive = true
-    setLimits(null)
+    setLimits(getLimitUps.peek(code) || null)
     setShowLimits(false)
     getLimitUps(code).then((d) => alive && setLimits(d)).catch(() => alive && setLimits({ up_count: null }))
-    setEvents([])
+    setEvents(getStockEvents.peek(code)?.events || [])
     getStockEvents(code).then((d) => alive && setEvents(d.events || [])).catch(() => {})
     return () => { alive = false }
   }, [code])

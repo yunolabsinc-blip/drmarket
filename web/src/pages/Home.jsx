@@ -15,7 +15,14 @@ const INDEX_CODES = { 코스피: '0001', 코스닥: '1001' }
 
 function IndexCards() {
   const { indices } = useMarket()
-  const [spark, setSpark] = useState({})
+  const [spark, setSpark] = useState(() => {
+    const out = {}
+    for (const [name, code] of Object.entries(INDEX_CODES)) {
+      const c = getIndexChart.peek(code, 'D')?.candles
+      if (c?.length) out[name] = c.slice(-30).map((x) => x.c)
+    }
+    return out
+  })
   useEffect(() => {
     Object.entries(INDEX_CODES).forEach(([name, code]) =>
       getIndexChart(code, 'D')

@@ -5,12 +5,14 @@ Railway 배포용
 """
 
 import asyncio
+import hashlib
 import hmac
 import json
 import logging
 import os
 import random
 import re
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 
@@ -289,6 +291,45 @@ def _cdn(body: dict, fresh: int, stale: int) -> JSONResponse:
     })
 
 
+_refreshing: set[str] = set()
+
+
+async def _shared(name: str, fresh: int, compute, background: BackgroundTasks, keep: int = 86400):
+    """느린 결과를 서버들끼리 공유(Upstash). 오래됐어도 일단 돌려주고 뒤에서 새로 계산 —
+    서버가 새로 켜졌거나 캐시가 지난 뒤에도 사용자는 기다리지 않는다. 처음 한 번만 직접 계산."""
+    mem = kis._cache_get(f"shared:{name}", fresh)
+    if mem is not None:
+        return mem
+    rkey = f"drmarket:shared:v1:{name}"
+
+    async def refresh():
+        if name in _refreshing:
+            return None
+        _refreshing.add(name)
+        try:
+            body = await compute()
+            if body:
+                kis._cache_set(f"shared:{name}", body)
+                await kis._redis("SET", rkey, json.dumps({"at": time.time(), "body": body}, ensure_ascii=False, separators=(",", ":")), "EX", str(keep))
+            return body
+        finally:
+            _refreshing.discard(name)
+
+    raw = await kis._redis("GET", rkey)
+    if raw:
+        try:
+            saved = json.loads(raw)
+            if time.time() - saved["at"] < fresh:
+                kis._cache_set(f"shared:{name}", saved["body"])
+            else:
+                background.add_task(refresh)
+            return saved["body"]
+        except Exception:
+            pass
+    body = await refresh()
+    return body if body is not None else await compute()
+
+
 def _market_open() -> bool:
     return ranking._max_age() < 600   # 평일 08:00~20:00
 
@@ -328,13 +369,16 @@ async def get_index_chart(code: str, period: str = Query("D", description="D / W
 # 뉴스
 # ──────────────────────────────────────────────
 @app.get("/api/stock/{code}/news", summary="종목 뉴스")
-async def get_stock_news(code: str, name: str = Query("", description="종목명"), count: int = Query(10, ge=1, le=30)):
+async def get_stock_news(background: BackgroundTasks, code: str, name: str = Query("", description="종목명"),
+                         count: int = Query(10, ge=1, le=30)):
     """종목명으로 검색한 최신 뉴스 (제목·매체·시각·링크)"""
-    stock_name = name
-    if not stock_name:
-        d = await kis.fetch_stock_price(code)
-        stock_name = d.get("name") or code
-    return {"news": await news.stock_news(stock_name, count)}
+    async def compute():
+        stock_name = name
+        if not stock_name:
+            d = await kis.fetch_stock_price(code)
+            stock_name = d.get("name") or code
+        return {"news": await news.stock_news(stock_name, count)}
+    return await _shared(f"stocknews:{code}:{count}", 300, compute, background, keep=6 * 3600)
 
 
 @app.get("/api/news", summary="통합 뉴스")
@@ -348,8 +392,17 @@ async def get_market_news(topic: str = Query("market", description="market / fea
 
 
 @app.get("/api/news/themes", summary="테마별 오늘의 주요 기사")
-async def get_theme_news(ids: str = Query("", description="쉼표 구분 테마 id")):
-    return {"news": await news.theme_news([i.strip() for i in ids.split(",") if i.strip()])}
+async def get_theme_news(background: BackgroundTasks, ids: str = Query("", description="쉼표 구분 테마 id")):
+    id_list = sorted({i.strip() for i in ids.split(",") if i.strip()})
+    if len(id_list) <= 3:
+        return {"news": await news.theme_news(id_list)}
+    # 홈·테마 화면은 늘 같은 테마 묶음을 요청하므로 묶음째 공유
+    tag = hashlib.md5(",".join(id_list).encode()).hexdigest()[:12]
+    return await _shared(f"themenews:{tag}", 300, lambda: _theme_news(id_list), background, keep=6 * 3600)
+
+
+async def _theme_news(id_list):
+    return {"news": await news.theme_news(id_list)}
 
 
 @app.get("/api/news/headlines", summary="주요 뉴스")
@@ -358,8 +411,12 @@ async def get_headlines(count: int = Query(5, ge=1, le=10)):
 
 
 @app.get("/api/market/calendar", summary="시장 일정")
-async def get_calendar(days: int = Query(60, ge=7, le=90)):
+async def get_calendar(background: BackgroundTasks, days: int = Query(60, ge=7, le=90)):
     """휴장·공모주·배당·주총·무상증자·감자·합병 + 경제지표·금리 결정·실적 발표·만기·주요 행사"""
+    return await _shared(f"calendar:{days}:{datetime.now().strftime('%Y%m%d')}", 1800, lambda: _calendar(days), background)
+
+
+async def _calendar(days: int):
     ksd, macro = await asyncio.gather(market_events.fetch_calendar(days), macro_events.fetch_macro(days))
     order = {"holiday": 0, "rate": 1, "macro": 2, "expiry": 3, "event": 4, "ipo": 5, "listing": 6, "earnings": 7,
              "us_earnings": 8, "ir": 9, "dividend": 10, "bonus": 11, "meeting": 12, "capdec": 13, "merger": 14}
@@ -368,15 +425,17 @@ async def get_calendar(days: int = Query(60, ge=7, le=90)):
 
 
 @app.get("/api/stock/{code}/events", summary="종목 일정")
-async def get_stock_events(code: str, days: int = Query(90, ge=7, le=180)):
+async def get_stock_events(background: BackgroundTasks, code: str, days: int = Query(90, ge=7, le=180)):
     """배당 기준일·주주총회·무상증자·감자·합병 등 해당 종목의 예정 일정"""
-    return {"events": await market_events.fetch_stock_events(code, days)}
+    async def compute():
+        return {"events": await market_events.fetch_stock_events(code, days)}
+    return await _shared(f"events:{code}:{days}", 3600, compute, background)
 
 
 @app.get("/api/stock/{code}/limit-ups", summary="상한가 기록")
-async def get_limit_ups(code: str, years: int = Query(2, ge=1, le=3)):
+async def get_limit_ups(background: BackgroundTasks, code: str, years: int = Query(2, ge=1, le=3)):
     """최근 N년 상한가·하한가 마감일"""
-    return await market_events.fetch_limit_ups(code, years)
+    return await _shared(f"limitups:{code}:{years}", 6 * 3600, lambda: market_events.fetch_limit_ups(code, years), background, keep=3 * 86400)
 
 
 @app.get("/api/stocks", summary="검색용 주식 목록")

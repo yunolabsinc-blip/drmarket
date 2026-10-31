@@ -103,7 +103,7 @@ function MonthGrid({ events, today, selected, onSelect }) {
 }
 
 export default function Calendar() {
-  const [events, setEvents] = useState(null)
+  const [events, setEvents] = useState(() => getCalendar.peek()?.events || null)
   const [filter, setFilter] = useState('all')
   const [scope, setScope] = useState('all')
   const [view, setView] = useState(() => { try { return localStorage.getItem('drm.calView') || 'list' } catch { return 'list' } })
@@ -112,7 +112,7 @@ export default function Calendar() {
 
   useEffect(() => {
     let alive = true
-    getCalendar().then((d) => alive && setEvents(d.events || [])).catch(() => alive && setEvents([]))
+    getCalendar().then((d) => alive && setEvents(d.events || [])).catch(() => alive && setEvents((e) => e || []))
     return () => { alive = false }
   }, [])
 

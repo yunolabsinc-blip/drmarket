@@ -78,12 +78,14 @@ export function NewsItems({ items }) {
   )
 }
 
-function useNews(fetcher, key, intervalMs = 180000) {
-  const [state, setState] = useState({ items: null, failed: false, fallback: null })
+// peek: 마지막으로 받은 응답 (있으면 기다리지 않고 먼저 보여 주고 뒤에서 갱신)
+const fromSaved = (d) => ({ items: d?.news || null, failed: false, fallback: d?.fallback || null })
+function useNews(fetcher, key, peek, intervalMs = 180000) {
+  const [state, setState] = useState(() => fromSaved(peek()))
   useEffect(() => {
     let alive = true
     let timer
-    setState({ items: null, failed: false })
+    setState(fromSaved(peek()))
     const load = () =>
       fetcher()
         .then((d) => alive && setState({ items: d.news || [], failed: false, fallback: d.fallback || null }))
@@ -96,7 +98,7 @@ function useNews(fetcher, key, intervalMs = 180000) {
 }
 
 export function Headlines({ count = 5 }) {
-  const { items } = useNews(() => getHeadlines(count), 'headlines')
+  const { items } = useNews(() => getHeadlines(count), 'headlines', () => getHeadlines.peek(count))
   if (items === null) return <Skeleton rows={3} />
   if (!items.length) return <div className="card muted-box">뉴스를 불러오지 못했습니다</div>
   return <NewsItems items={items} />
@@ -105,7 +107,11 @@ export function Headlines({ count = 5 }) {
 export default function MarketNews() {
   const [topic, setTopic] = useState(() => { try { return sessionStorage.getItem('drm.newsTopic') || 'market' } catch { return 'market' } })
   const select = (id) => { setTopic(id); try { sessionStorage.setItem('drm.newsTopic', id) } catch {} }
-  const { items, failed, fallback } = useNews(() => getMarketNews(topic), topic)
+  useEffect(() => {   // 다른 주제 탭도 누르자마자 보이게 미리 받아 둠
+    const t = setTimeout(() => TOPICS.forEach((x) => x.id !== topic && getMarketNews(x.id).catch(() => {})), 800)
+    return () => clearTimeout(t)
+  }, [])
+  const { items, failed, fallback } = useNews(() => getMarketNews(topic), topic, () => getMarketNews.peek(topic))
   return (
     <>
       {fallback && <div className="note">지금은 국내 특징주 기사가 없어 증시 뉴스를 보여드립니다. 장이 열리면 특징주 기사가 올라옵니다.</div>}

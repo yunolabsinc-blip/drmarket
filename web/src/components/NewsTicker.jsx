@@ -8,7 +8,7 @@ import { track } from '../lib/analytics'
 // 하단 탭 위에 고정되는 주요 뉴스 띠: 5초마다 다음 기사, 3분마다 새로 조회.
 // 누르면 요약 창이 열리고, 거기서 기사 원문 또는 뉴스 화면으로 이동.
 export default function NewsTicker({ hidden }) {
-  const [items, setItems] = useState([])
+  const [items, setItems] = useState(() => getHeadlines.peek(10)?.news || [])
   const [idx, setIdx] = useState(0)
   const [sheet, setSheet] = useState(null)   // 열린 기사
 
