@@ -184,7 +184,8 @@ b { font-weight: 650; }
 .stock-change .rate { font-size: 15px; }
 .chart-card { padding: 10px 4px 10px; }
 .chart { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
-.chart svg { display: block; }
+.chart svg { display: block; position: relative; }
+.chart-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
 .chart-label { font-size: 11px; fill: var(--text-2); font-weight: 600; }
 .chart-axis { font-size: 10.5px; fill: var(--text-3); }
 .chart-empty { display: grid; place-items: center; color: var(--text-3); font-size: 13px; }

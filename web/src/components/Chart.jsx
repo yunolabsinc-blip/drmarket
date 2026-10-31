@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 // 캔들 차트 (MTS 방식): 거래량 · 이동평균선(5/20/60) · 오른쪽 가격축 · 드래그 이동 · 휠/핀치/버튼 확대 · 십자선
 // candles: [{t, o, h, l, c, v}] 오래된 → 최신
+// 봉·거래량·이동평균·눈금선은 canvas에 한 번에 그리고, 글자·십자선만 SVG로 (봉이 많아도 끊기지 않게)
 const MAS = [
   { n: 5, color: '#f59e0b' },
   { n: 20, color: '#10b981' },
@@ -19,6 +20,14 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
   const [cross, setCross] = useState(null)      // 십자선 위치 (전체 배열 인덱스)
   const gesture = useRef(null)
   const live = useRef({})                        // 터치 핸들러에서 최신 값을 읽기 위한 참조
+  const canvas = useRef(null)
+  const frame = useRef({ id: 0, next: null })
+  // 손가락·마우스 이동은 초당 100번 넘게 오므로 한 프레임에 한 번만 화면을 바꿈
+  const setViewSoon = (next) => {
+    const f = frame.current
+    f.next = next
+    if (!f.id) f.id = requestAnimationFrame(() => { f.id = 0; setView(f.next) })
+  }
   const len = candles?.length || 0
 
   const idxAt = (clientX) => {
@@ -60,7 +69,7 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
         const ratio = dist(e.touches) / g.dist0
         const count = clampCount(g.count0 / ratio)
         const nextEnd = clampEnd(g.end0)
-        setView({ count, end: nextEnd })
+        setViewSoon({ count, end: nextEnd })
         setCross(null)
         return
       }
@@ -74,7 +83,7 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
       if (g.mode === 'pan') {
         e.preventDefault()
         const nextEnd = clampEnd(g.end0 - Math.round((t.clientX - g.x0) / live.current.step))
-        setView((v) => ({ ...v, end: nextEnd }))
+        setViewSoon({ count: live.current.count, end: nextEnd })
       } else if (g.mode === 'scroll') {
         // touch-action: none 이라 세로 스크롤은 직접 넘긴다
         window.scrollBy(0, g.lastY - t.clientY)
@@ -105,6 +114,8 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
       el.removeEventListener('touchmove', onMove)
       el.removeEventListener('touchend', onEnd)
       el.removeEventListener('touchcancel', onEnd)
+      cancelAnimationFrame(frame.current.id)
+      frame.current.id = 0
     }
   }, [len > 0])
 
@@ -140,7 +151,7 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
   const count = Math.min(len, Math.max(10, view.count))
   const end = Math.max(count, Math.min(view.end, len))
   const start = end - count
-  const visible = candles ? candles.slice(start, end) : []
+  const visible = useMemo(() => (candles ? candles.slice(start, end) : []), [candles, start, end])
 
   const geo = useMemo(() => {
     if (!visible.length) return null
@@ -165,6 +176,86 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
   }, [visible, mas, start, end, count, baseline, width, height])
 
   live.current = { len, count, end, start, step: geo?.step || 1 }
+
+  useLayoutEffect(() => {
+    const cv = canvas.current
+    if (!cv || !geo) return
+    const dpr = window.devicePixelRatio || 1
+    const W = Math.round(width * dpr), H = Math.round(height * dpr)
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; cv.style.width = width + 'px'; cv.style.height = height + 'px' }
+    const ctx = cv.getContext('2d')
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, width, height)
+    const css = getComputedStyle(cv)
+    const color = (name) => css.getPropertyValue(name).trim()
+    const UP = color('--up'), DOWN = color('--down')
+    const { x, y, vy, min, max, step, volTop } = geo
+    const px = (v) => Math.round(v * dpr) / dpr + 0.5 / dpr   // 선이 번지지 않게 화소에 맞춤
+    const right = width - PAD.right
+
+    // 눈금선
+    ctx.lineWidth = 1
+    ctx.strokeStyle = color('--line')
+    ctx.beginPath()
+    for (let i = 0; i <= 4; i++) { const yy = px(y(min + ((max - min) * i) / 4)); ctx.moveTo(PAD.left, yy); ctx.lineTo(right, yy) }
+    ctx.moveTo(PAD.left, px(volTop)); ctx.lineTo(right, px(volTop))
+    ctx.stroke()
+    if (baseline > 0 && baseline > min && baseline < max) {
+      ctx.strokeStyle = color('--text-3')
+      ctx.setLineDash([3, 4])
+      ctx.beginPath(); ctx.moveTo(PAD.left, px(y(baseline))); ctx.lineTo(right, px(y(baseline))); ctx.stroke()
+      ctx.setLineDash([])
+    }
+
+    // 봉·거래량: 색깔별로 모아서 한 번에
+    const bw = Math.max(1, step * 0.62)
+    const volBottom = volTop + VOL_H
+    for (const up of [true, false]) {
+      const col = up ? UP : DOWN
+      ctx.strokeStyle = col
+      ctx.fillStyle = col
+      ctx.beginPath()
+      for (let k = 0; k < visible.length; k++) {
+        const d = visible[k]
+        if ((d.c >= d.o) !== up) continue
+        const cx = px(x(start + k))
+        ctx.moveTo(cx, y(d.h)); ctx.lineTo(cx, y(d.l))
+      }
+      ctx.stroke()
+      for (let k = 0; k < visible.length; k++) {
+        const d = visible[k]
+        if ((d.c >= d.o) !== up) continue
+        const yo = y(d.o), yc = y(d.c)
+        ctx.fillRect(x(start + k) - bw / 2, Math.min(yo, yc), bw, Math.max(1, Math.abs(yo - yc)))
+      }
+      ctx.globalAlpha = 0.45
+      for (let k = 0; k < visible.length; k++) {
+        const d = visible[k]
+        if ((d.c >= d.o) !== up) continue
+        const top = vy(d.v)
+        ctx.fillRect(x(start + k) - bw / 2, top, bw, Math.max(0, volBottom - top))
+      }
+      ctx.globalAlpha = 1
+    }
+
+    // 이동평균
+    ctx.lineWidth = 1.2
+    ctx.globalAlpha = 0.9
+    ctx.lineJoin = 'round'
+    for (const m of mas) {
+      ctx.strokeStyle = m.color
+      ctx.beginPath()
+      let on = false
+      for (let i = start; i < end; i++) {
+        const v = m.arr[i]
+        if (v == null) continue
+        if (on) ctx.lineTo(x(i), y(v)); else { ctx.moveTo(x(i), y(v)); on = true }
+      }
+      ctx.stroke()
+    }
+    ctx.globalAlpha = 1
+  }, [geo, visible, mas, baseline, width, height, start, end])
+
   if (!len || !geo) {
     return <div ref={wrap} className="chart-empty" style={{ height }}>차트 데이터가 없습니다</div>
   }
@@ -186,7 +277,7 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
     g.moved = true
     setCross(null)
     const nextEnd = clampEnd(g.end0 - Math.round(dx / live.current.step))
-    setView((v) => ({ ...v, end: nextEnd }))
+    setViewSoon({ count, end: nextEnd })
   }
   const onPointerUp = (e) => {
     if (e.pointerType !== 'mouse') return
@@ -202,45 +293,16 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
   const last = candles[len - 1]
   const c = cross != null ? candles[cross] : null
   const prevC = cross != null && cross > 0 ? candles[cross - 1].c : baseline || null
-  const bw = Math.max(1, step * 0.62)
-  const maPath = (m) => {
-    let d = ''
-    for (let i = start; i < end; i++) {
-      const v = m.arr[i]
-      if (v == null) continue
-      d += `${d ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`
-    }
-    return d
-  }
 
   return (
     <div ref={wrap} className="chart" style={{ height }}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onPointerLeave={(e) => { if (e.pointerType === 'mouse') { gesture.current = null; setCross(null) } }}>
+      <canvas ref={canvas} className="chart-canvas" />
       <svg width={width} height={height}>
         {ticks.map((t, i) => (
-          <g key={i}>
-            <line x1={PAD.left} x2={width - PAD.right} y1={y(t)} y2={y(t)} stroke="var(--line)" />
-            <text x={width - PAD.right + 6} y={y(t) + 4} className="chart-axis">{format(t)}</text>
-          </g>
+          <text key={i} x={width - PAD.right + 6} y={y(t) + 4} className="chart-axis">{format(t)}</text>
         ))}
-        {baseline > 0 && baseline > min && baseline < max && (
-          <line x1={PAD.left} x2={width - PAD.right} y1={y(baseline)} y2={y(baseline)} stroke="var(--text-3)" strokeDasharray="3 4" />
-        )}
-        {visible.map((d, k) => {
-          const i = start + k
-          const up = d.c >= d.o
-          const col = up ? 'var(--up)' : 'var(--down)'
-          return (
-            <g key={i}>
-              <line x1={x(i)} x2={x(i)} y1={y(d.h)} y2={y(d.l)} stroke={col} strokeWidth="1" />
-              <rect x={x(i) - bw / 2} width={bw} y={y(Math.max(d.o, d.c))} height={Math.max(1, Math.abs(y(d.o) - y(d.c)))} fill={col} />
-              <rect x={x(i) - bw / 2} width={bw} y={vy(d.v)} height={Math.max(0, volTop + VOL_H - vy(d.v))} fill={col} opacity="0.45" />
-            </g>
-          )
-        })}
-        {mas.map((m) => <path key={m.n} d={maPath(m)} fill="none" stroke={m.color} strokeWidth="1.2" opacity="0.9" />)}
-        <line x1={PAD.left} x2={width - PAD.right} y1={volTop} y2={volTop} stroke="var(--line)" />
         {!c && (
           <>
             <text x={x(hiIdx)} y={Math.max(PAD.top + 10, y(candles[hiIdx].h) - 5)} textAnchor={x(hiIdx) > width / 2 ? 'end' : 'start'} className="chart-label">고 {format(candles[hiIdx].h)}</text>
