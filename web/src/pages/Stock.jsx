@@ -44,6 +44,21 @@ function prefetchCharts(fetcher, kind, key, periods) {
   })
 }
 
+// 종목 줄을 누르는 순간(손가락이 닿을 때) 차트·상세를 먼저 요청 — 화면이 열릴 때 이미 오고 있게
+const early = new Map()   // 차트 id → 진행 중인 요청 (2초 안에 화면이 열리면 그대로 이어 받음)
+export function prefetchStock(code) {
+  if (!/^\d{6}$/.test(code)) return
+  const period = loadPeriod('drm.chartPeriod', 'D')
+  const id = `stock:${code}:${period}`
+  if (!chartCache.has(id) && !early.has(id)) {
+    const req = getStockChart(code, period, true)
+    req.catch(() => {})
+    early.set(id, req)
+    setTimeout(() => early.delete(id), 2000)
+  }
+  if (!getDetail.peek(code)) getDetail(code).catch(() => {})
+}
+
 function useChart(fetcher, key, period, kind = 'stock', prefetch = []) {
   const id = `${kind}:${key}:${period}`
   const [state, setState] = useState(() => ({ candles: chartCache.get(id) ?? null, error: false }))
@@ -56,7 +71,9 @@ function useChart(fetcher, key, period, kind = 'stock', prefetch = []) {
     let partial = false
     const load = (first) => {
       if (!first && !partial && document.visibilityState !== 'visible') return schedule()
-      fetcher(key, period, first || partial)
+      const pre = first && early.get(id)
+      if (pre) early.delete(id)
+      ;(pre || fetcher(key, period, first || partial))
         .then((d) => {
           const candles = d.candles || []
           partial = !!d.partial

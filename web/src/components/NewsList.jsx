@@ -39,7 +39,7 @@ export function RelatedStocks({ text, onNavigate }) {
       {stocks.map((s) => {
         const p = prices[s.code]
         return (
-          <button key={s.code} className="chip stock-chip" onClick={(e) => { e.stopPropagation(); track('stock_chip'); onNavigate?.(); go(`/stock/${s.code}`) }}>
+          <button key={s.code} className="chip stock-chip" data-stock={s.code} onClick={(e) => { e.stopPropagation(); track('stock_chip'); onNavigate?.(); go(`/stock/${s.code}`) }}>
             {s.name}{p && <em className={tone(p.change_rate)}>{fmtRate(p.change_rate)}</em>}
           </button>
         )

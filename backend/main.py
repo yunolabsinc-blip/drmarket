@@ -297,7 +297,7 @@ def _cdn(body: dict, fresh: int, stale: int) -> JSONResponse:
 _refreshing: set[str] = set()
 
 
-async def _shared(name: str, fresh: int, compute, background: BackgroundTasks, keep: int = 86400):
+async def _shared(name: str, fresh: int, compute, background: BackgroundTasks, keep: int = 86400, first=None):
     """느린 결과를 서버들끼리 공유(Upstash). 오래됐어도 일단 돌려주고 뒤에서 새로 계산 —
     서버가 새로 켜졌거나 캐시가 지난 뒤에도 사용자는 기다리지 않는다. 처음 한 번만 직접 계산."""
     mem = kis._cache_get(f"shared:{name}", fresh)
@@ -329,6 +329,9 @@ async def _shared(name: str, fresh: int, compute, background: BackgroundTasks, k
             return saved["body"]
         except Exception:
             pass
+    if first is not None:   # 아무도 받아 둔 적 없으면 가벼운 일부를 먼저 주고 전체는 뒤에서
+        background.add_task(refresh)
+        return await first()
     body = await refresh()
     return body if body is not None else await compute()
 
@@ -353,10 +356,24 @@ async def get_stock_chart(background: BackgroundTasks, code: str,
         return _cdn(body, 2, 20) if _market_open() else _cdn(body, 60, 600)
     if period not in ("D", "W", "M", "Y"):
         raise HTTPException(400, "period는 1m/3m/5m/10m/30m/60m 또는 D/W/M/Y 입니다.")
-    body = {"period": period, "candles": await kis.fetch_daily_chart(code, period)}
-    if not body["candles"]:
-        return body
-    return _cdn(body, 20, 120) if _market_open() else _cdn(body, 300, 3600)
+    open_ = _market_open()
+
+    async def compute():
+        candles = await kis.fetch_daily_chart(code, period)
+        return {"period": period, "candles": candles} if candles else None
+
+    async def first():   # 처음 보는 종목: 최근 구간(일봉 약 100개)만 먼저 — 2.5초 걸리던 첫 차트
+        candles = await kis.fetch_daily_chart(code, period, pages=1)
+        return {"period": period, "candles": candles, "partial": True}
+
+    # 서버끼리 공유 — 새로 켜진 서버도, 다른 사람이 본 종목은 바로 준다 (마지막 봉은 앱이 실시간 시세로 덧그림)
+    body = await _shared(f"chart:{code}:{period}", 60 if open_ else 600, compute, background,
+                         keep=3 * 86400, first=first if quick and period != "Y" else None)
+    if not body or not body.get("candles"):
+        return {"period": period, "candles": []}
+    if body.get("partial"):
+        return JSONResponse(body, headers={"Cache-Control": "no-store"})
+    return _cdn(body, 20, 120) if open_ else _cdn(body, 300, 3600)
 
 
 @app.get("/api/index/{code}/chart", summary="지수 차트")

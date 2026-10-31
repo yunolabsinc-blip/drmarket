@@ -10,7 +10,7 @@ import Home from './pages/Home'
 import Themes, { ThemeDetail } from './pages/Themes'
 import Rank from './pages/Rank'
 import Watch from './pages/Watch'
-import Stock, { IndexPage } from './pages/Stock'
+import Stock, { IndexPage, prefetchStock } from './pages/Stock'
 import Feedback from './components/Feedback'
 import { InstallGuide, useInstallGuide } from './components/Install'
 import { setRoute, track } from './lib/analytics'
@@ -42,6 +42,12 @@ export default function App() {
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const install = useInstallGuide()
   useEffect(() => { setRoute(route) }, [route.page, route.param])
+  // 종목을 누르는 순간(손을 떼기 전) 차트·상세를 먼저 요청
+  useEffect(() => {
+    const down = (e) => { const el = e.target.closest?.('[data-stock]'); if (el) prefetchStock(el.dataset.stock) }
+    document.addEventListener('pointerdown', down, { passive: true })
+    return () => document.removeEventListener('pointerdown', down)
+  }, [])
   const closeSearch = useCallback(() => setSearching(false), [])
   const isSub = ['theme', 'stock', 'index', 'admin'].includes(route.page)
   useTabSwipe(route, !isSub && !searching && !menuOpen && !feedbackOpen && !install.mode)

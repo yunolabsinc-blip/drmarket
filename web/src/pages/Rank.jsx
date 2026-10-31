@@ -67,7 +67,7 @@ export function useRanking(type) {
 // 순위 한 줄: 값이 그대로인 줄은 시세가 갱신돼도 다시 그리지 않음 (100줄 전체를 매번 그리던 것)
 const RankRow = memo(function RankRow({ code, name, price, rate, sub, rank, flash, fav }) {
   return (
-    <button className="stock-row" onClick={() => go(`/stock/${code}`)}>
+    <button className="stock-row" data-stock={code} onClick={() => go(`/stock/${code}`)}>
       <span className="rank-no">{rank}</span>
       <span className="stock-name">
         <b>{name || code}</b>

@@ -122,7 +122,7 @@ export default function Search({ onClose }) {
           <>
             <h3 className="search-group">종목</h3>
             {results.stocks.map((s) => (
-              <button key={s.code} className="search-item" onClick={() => open(`/stock/${s.code}`, { name: s.name, code: s.code, sub: `${s.market === 'P' ? '코스피' : '코스닥'} ${s.code}` })}>
+              <button key={s.code} className="search-item" data-stock={s.code} onClick={() => open(`/stock/${s.code}`, { name: s.name, code: s.code, sub: `${s.market === 'P' ? '코스피' : '코스닥'} ${s.code}` })}>
                 <b>{s.name}</b>
                 <span className="muted">{s.market === 'P' ? '코스피' : '코스닥'} {s.code}</span>
                 {prices[s.code] && <Rate value={prices[s.code].change_rate} />}

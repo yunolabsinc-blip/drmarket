@@ -83,7 +83,7 @@ function ThemeTile({ theme, rank, sort, total, news }) {
       <ul className="tile-stocks">
         {stocks.map((s) => (
           <li key={s.code}>
-            <button className="tile-stock" onClick={(e) => { e.stopPropagation(); go(`/stock/${s.code}`) }}>
+            <button className="tile-stock" data-stock={s.code} onClick={(e) => { e.stopPropagation(); go(`/stock/${s.code}`) }}>
               <span className="ts-top">
                 <span className="ts-name">{s.name}</span>
                 <span className={`ts-rate ${tone(s.change_rate)}`}>{fmtRate(s.change_rate)}</span>

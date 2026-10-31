@@ -96,7 +96,7 @@ export function StockRow({ stock, rank, right, onClick }) {
   const { flash, favorites } = useMarket()
   const f = flash[stock.code]
   return (
-    <button className="stock-row" onClick={onClick || (() => go(`/stock/${stock.code}`))}>
+    <button className="stock-row" data-stock={stock.code} onClick={onClick || (() => go(`/stock/${stock.code}`))}>
       {rank !== undefined && <span className="rank-no">{rank}</span>}
       <span className="stock-name">
         <b>{stock.name || stock.code}</b>
