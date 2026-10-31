@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { useMarket } from '../lib/store'
 import { getRanking } from '../lib/api'
-import { fmtVolume, fmtWon, marketPhase } from '../lib/format'
-import { Disclaimer, Rate, Skeleton, StatusLine, StockRow } from '../components/ui'
+import { go } from '../lib/router'
+import { fmtPrice, fmtVolume, fmtWon, marketPhase } from '../lib/format'
+import { Disclaimer, Rate, Skeleton, StatusLine } from '../components/ui'
 
 const TYPES = [
   { id: 'amount', label: '거래대금' },
@@ -63,9 +64,42 @@ export function useRanking(type) {
   return { rows, loading, count }
 }
 
+// 순위 한 줄: 값이 그대로인 줄은 시세가 갱신돼도 다시 그리지 않음 (100줄 전체를 매번 그리던 것)
+const RankRow = memo(function RankRow({ code, name, price, rate, sub, rank, flash, fav }) {
+  return (
+    <button className="stock-row" onClick={() => go(`/stock/${code}`)}>
+      <span className="rank-no">{rank}</span>
+      <span className="stock-name">
+        <b>{name || code}</b>
+        {fav && <span className="fav-dot" aria-label="관심종목">★</span>}
+      </span>
+      <span className="stock-nums">
+        <b className={`price ${flash ? `flash-${flash}` : ''}`}>{price ? fmtPrice(price) : '—'}</b>
+        <span className="rank-right">
+          <Rate value={rate} />
+          <small>{sub}</small>
+        </span>
+      </span>
+    </button>
+  )
+})
+
 export default function Rank() {
   const [type, setType] = useState(() => sessionStorage.getItem('drm.rank') || 'amount')
   const { rows, loading, count } = useRanking(type)
+  const { flash, favorites } = useMarket()
+  // 첫 화면은 위 30줄만 바로 그리고 나머지는 다음 프레임에 (탭을 누르자마자 반응하게)
+  const [limit, setLimit] = useState(30)
+  useEffect(() => {
+    setLimit(30)
+    const id = setTimeout(() => setLimit(100), 30)
+    return () => clearTimeout(id)
+  }, [type])
+  // 다른 순위 탭도 누르자마자 보이게 미리 받아 둠
+  useEffect(() => {
+    const t = setTimeout(() => TYPES.forEach((x) => x.id !== type && getRanking(x.id).catch(() => {})), 600)
+    return () => clearTimeout(t)
+  }, [])
   const select = (id) => {
     setType(id)
     try { sessionStorage.setItem('drm.rank', id) } catch {}
@@ -87,14 +121,10 @@ export default function Rank() {
         <div className="card muted-box">순위 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div>
       ) : (
         <div className="card list">
-          {rows.map((s, i) => (
-            <StockRow key={s.code} stock={s} rank={i + 1}
-              right={
-                <span className="rank-right">
-                  <Rate value={s.change_rate} />
-                  <small>{type === 'volume' ? fmtVolume(s.volume) : type === 'amount' ? fmtWon(s.trading_value) : ''}</small>
-                </span>
-              } />
+          {rows.slice(0, limit).map((s, i) => (
+            <RankRow key={s.code} code={s.code} name={s.name} price={s.price} rate={s.change_rate} rank={i + 1}
+              sub={type === 'volume' ? fmtVolume(s.volume) : type === 'amount' ? fmtWon(s.trading_value) : ''}
+              flash={flash[s.code]} fav={favorites.includes(s.code)} />
           ))}
         </div>
       )}
