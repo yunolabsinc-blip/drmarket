@@ -256,7 +256,8 @@ b { font-weight: 650; }
 }
 @keyframes fade { from { opacity: 0; transform: translateY(6px); } }
 .search-bar { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 18px; border-bottom: 1px solid var(--line); color: var(--text-3); }
-.search-bar input { flex: 1; border: 0; outline: none; font: inherit; font-size: 17px; height: 44px; color: var(--text); background: transparent; }
+.search-bar > :not(input) { flex-shrink: 0; }   /* 좁은 화면·큰 글꼴에서도 닫기 버튼이 밀려나지 않게 */
+.search-bar input { flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 17px; height: 44px; color: var(--text); background: transparent; }
 .search-body { overflow-y: auto; flex: 1; padding-bottom: 40px; }
 .search-hint { padding: 28px 20px; color: var(--text-3); font-size: 14px; }
 .search-group { font-size: 13px; color: var(--text-3); font-weight: 600; padding: 18px 20px 6px; }
