@@ -26,7 +26,7 @@ def parse(raw: bytes, tail: int, market: str):
         code = head[0:9].decode("cp949", "ignore").strip()
         name = head[21:].decode("cp949", "ignore").strip()
         group = rest[1:3].decode("cp949", "ignore")   # ST=주권, EF=ETF, EN=ETN ...
-        if group == "ST" and len(code) == 6 and code.isdigit():
+        if group == "ST" and len(code) == 6 and code.isalnum():   # 2024년부터 새 상장주는 영문 섞인 코드(예: 0126Z0)
             yield [code, name, market]
 
 

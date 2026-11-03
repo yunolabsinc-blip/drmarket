@@ -5,7 +5,7 @@ export const API_BASE = import.meta.env.VITE_API_URL || 'https://drmarket-api.ve
 // 뉴스·순위·시장종합·일정·종목 정보처럼 자주 다시 여는 것만 이 기기에 저장 (시세·차트·호가는 따로 처리)
 const SAVE_KEY = 'drm.api'
 const SAVE_MAX = 60
-const SAVE_RE = /^\/api\/(news|ranking|market\/(overview|calendar)|stock\/\d{6}\/(detail|news|events|limit-ups))/
+const SAVE_RE = /^\/api\/(news|ranking|market\/(overview|calendar)|stock\/[0-9A-Z]{6}\/(detail|news|events|limit-ups))/
 const mem = new Map()
 let saved = {}
 try { saved = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') || {} } catch {}

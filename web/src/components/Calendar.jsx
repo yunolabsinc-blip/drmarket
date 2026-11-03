@@ -45,7 +45,7 @@ export function EventRows({ events, showName = true }) {
       {events.map((e, i) => {
         const t = EVENT_TYPES[e.type] || { label: e.type, cls: '' }
         const code = e.code || (e.name && byName.get(e.name))
-        const clickable = showName && code && /^\d{6}$/.test(code)
+        const clickable = showName && code && /^[0-9A-Z]{6}$/.test(code)
         const Row = clickable ? 'button' : 'div'
         return (
           <Row key={i} className="cal-row" onClick={clickable ? () => go(`/stock/${code}`) : undefined}>

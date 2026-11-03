@@ -71,7 +71,7 @@ export function buildMatcher(stockList) {
       if (found.size >= 6) break
     }
     // 괄호 안 종목코드 "(005930)"
-    for (const [, code] of text.matchAll(/\((\d{6})\)/g)) {
+    for (const [, code] of text.matchAll(/\(([0-9][0-9A-Z]{5})\)/g)) {
       if (nameMap.has(code) && !found.has(code)) found.set(code, nameMap.get(code))
     }
     const result = found.size ? found : brokers

@@ -47,7 +47,7 @@ function prefetchCharts(fetcher, kind, key, periods) {
 // 종목 줄을 누르는 순간(손가락이 닿을 때) 차트·상세를 먼저 요청 — 화면이 열릴 때 이미 오고 있게
 const early = new Map()   // 차트 id → 진행 중인 요청 (2초 안에 화면이 열리면 그대로 이어 받음)
 export function prefetchStock(code) {
-  if (!/^\d{6}$/.test(code)) return
+  if (!/^[0-9A-Z]{6}$/.test(code)) return   // 새 상장주는 영문 섞인 코드(예: 0126Z0)
   const period = loadPeriod('drm.chartPeriod', 'D')
   const id = `stock:${code}:${period}`
   if (!chartCache.has(id) && !early.has(id)) {
@@ -214,7 +214,7 @@ export default function Stock({ code }) {
     return () => { alive = false }
   }, [code])
 
-  if (!/^\d{6}$/.test(code)) {
+  if (!/^[0-9A-Z]{6}$/.test(code)) {
     return (<><SubBar title="종목" /><main className="page"><Empty title="잘못된 종목 코드입니다" /></main></>)
   }
 
