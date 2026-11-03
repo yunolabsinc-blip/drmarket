@@ -20,7 +20,7 @@ import kis_client as kis
 logger = logging.getLogger(__name__)
 URL = "https://new.real.download.dws.co.kr/common/master/{}_code.mst.zip"
 SOURCES = [("kospi", 228, "P"), ("kosdaq", 222, "Q")]   # 줄 끝 고정 길이 영역(바이트)
-RKEY = "drmarket:stocks:v1"
+RKEY = "drmarket:stocks:v2"   # v2: 영문 섞인 새 상장주 코드 포함
 TTL = 3 * 3600
 
 _mem: dict = {"at": 0.0, "list": []}
