@@ -13,7 +13,7 @@ const VOL_H = 46
 
 const fmtNum = (v) => (v >= 1e8 ? `${(v / 1e8).toFixed(1)}억` : v >= 1e4 ? `${Math.round(v / 1e4).toLocaleString()}만` : v.toLocaleString())
 
-export default function Chart({ candles, baseline, height = 300, format = (v) => v.toLocaleString(), initialCount = 80, resetKey }) {
+export default function Chart({ candles, baseline, height = 300, format = (v) => v.toLocaleString(), initialCount = 80, resetKey, current }) {
   const wrap = useRef(null)
   const [width, setWidth] = useState(340)
   const [view, setView] = useState({ count: initialCount, end: candles?.length || 0 })
@@ -293,6 +293,11 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
   const last = candles[len - 1]
   const c = cross != null ? candles[cross] : null
   const prevC = cross != null && cross > 0 ? candles[cross - 1].c : baseline || null
+  // a → b 변화율 문자열 (+12.34%)
+  const pct = (b, a) => (a ? `${b >= a ? '+' : ''}${(((b - a) / a) * 100).toFixed(2)}%` : '')
+  const tone = (b, a) => (b > a ? 'up' : b < a ? 'down' : '')
+  const hi = candles[hiIdx].h, lo = candles[loIdx].l
+  const now = current || last.c   // 현재가 (화면 위 시세와 같게)
 
   return (
     <div ref={wrap} className="chart" style={{ height }}
@@ -305,8 +310,13 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
         ))}
         {!c && (
           <>
-            <text x={x(hiIdx)} y={Math.max(PAD.top + 10, y(candles[hiIdx].h) - 5)} textAnchor={x(hiIdx) > width / 2 ? 'end' : 'start'} className="chart-label">고 {format(candles[hiIdx].h)}</text>
-            <text x={x(loIdx)} y={y(candles[loIdx].l) + 12} textAnchor={x(loIdx) > width / 2 ? 'end' : 'start'} className="chart-label">저 {format(candles[loIdx].l)}</text>
+            <text x={x(hiIdx)} y={Math.max(PAD.top + 10, y(candles[hiIdx].h) - 5)} textAnchor={x(hiIdx) > width / 2 ? 'end' : 'start'} className="chart-label">
+              고 {format(hi)} <tspan className={`chart-pct ${tone(now, hi)}`}>{pct(now, hi)}</tspan>
+            </text>
+            {/* 저점 대비 현재가 상승률 */}
+            <text x={x(loIdx)} y={y(candles[loIdx].l) + 12} textAnchor={x(loIdx) > width / 2 ? 'end' : 'start'} className="chart-label">
+              저 {format(lo)} <tspan className={`chart-pct ${tone(now, lo)}`}>{pct(now, lo)}</tspan>
+            </text>
           </>
         )}
         {dateIdx.map((i, k) => (
@@ -320,6 +330,10 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
             <line x1={PAD.left} x2={width - PAD.right} y1={y(c.c)} y2={y(c.c)} stroke="var(--text-2)" strokeDasharray="2 3" />
             <rect x={width - PAD.right + 2} y={y(c.c) - 9} width={PAD.right - 4} height={18} rx="4" fill="var(--text)" />
             <text x={width - PAD.right + 6} y={y(c.c) + 4} className="chart-axis" fill="#fff">{format(c.c)}</text>
+            {/* 고른 봉의 등락률을 가격선 위에 */}
+            {prevC ? (
+              <text x={width - PAD.right - 4} y={y(c.c) - 5} textAnchor="end" className={`chart-label chart-pct ${tone(c.c, prevC)}`}>{pct(c.c, prevC)}</text>
+            ) : null}
           </>
         )}
         {/* 현재가 표시 (최신 봉이 보일 때) */}
@@ -342,6 +356,7 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
           <span>종 <em className={prevC ? (c.c > prevC ? 'up' : c.c < prevC ? 'down' : '') : ''}>{format(c.c)}</em>
             {prevC ? <small className={c.c > prevC ? 'up' : c.c < prevC ? 'down' : ''}> {c.c > prevC ? '+' : ''}{(((c.c - prevC) / prevC) * 100).toFixed(2)}%</small> : null}</span>
           <span>량 <em>{fmtNum(c.v)}</em></span>
+          {cross < len - 1 && <span>현재가 대비 <em className={tone(now, c.c)}>{pct(now, c.c)}</em></span>}
         </div>
       )}
       <div className="chart-zoom">

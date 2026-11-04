@@ -254,7 +254,7 @@ export default function Stock({ code }) {
           <div className="card chart-card">
             {chart.candles === null ? <div className="skeleton chart-skel" /> :
               <Chart candles={withLivePrice(chart.candles, live?.price, period)} resetKey={`${code}:${period}`}
-                baseline={intraday ? d?.prev_close : undefined} initialCount={intraday ? 120 : 80} format={fmtPrice} />}
+                baseline={intraday ? d?.prev_close : undefined} initialCount={intraday ? 120 : 80} format={fmtPrice} current={price} />}
             <PeriodTabs periods={MAIN_PERIODS} value={period} onChange={setPeriod} />
           </div>
         ) : (
