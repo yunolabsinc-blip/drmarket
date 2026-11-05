@@ -95,7 +95,14 @@ function useChart(fetcher, key, period, kind = 'stock', prefetch = []) {
 }
 
 // 1.5초 실시간 시세를 마지막 봉에 바로 반영 (분봉은 새 분이 되면 봉 추가) (다음 차트 조회 전까지 사이를 메움)
-function withLivePrice(candles, price, period) {
+const monday = (t) => {
+  const d = new Date(`${t}T00:00:00`)
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return d.getTime()
+}
+
+// day: 종목 상세(오늘 시가·고가·저가·거래량, 넥스트레이드 포함)
+function withLivePrice(candles, price, period, day) {
   if (!candles?.length || !price) return candles
   const last = candles[candles.length - 1]
   if (!String(period).endsWith('m')) {
@@ -105,8 +112,16 @@ function withLivePrice(candles, price, period) {
     const same = period === 'D' ? last.t === today
       : period === 'Y' ? last.t.slice(0, 4) === today.slice(0, 4)
       : period === 'M' ? last.t.slice(0, 7) === today.slice(0, 7)
-      : (new Date(today) - new Date(last.t)) / 86400000 < 7
-    if (!same) return candles
+      : monday(last.t) === monday(today)
+    if (!same) {
+      // 넥스트레이드 프리마켓(08:00~09:00)엔 증권사 일봉에 오늘 봉이 아직 없다 → 오늘 시세로 새 봉을 붙인다
+      if (marketPhase().key === 'closed' || last.t >= today) return candles
+      const o = day?.open || price
+      return [...candles, {
+        t: today, o, c: price, v: day?.volume || 0,
+        h: Math.max(day?.high || price, price, o), l: Math.min(day?.low || price, price, o),
+      }]
+    }
   }
   if (String(period).endsWith('m') && /^\d\d:\d\d$/.test(last.t)) {
     const n = parseInt(period, 10) || 1
@@ -253,7 +268,7 @@ export default function Stock({ code }) {
         {view === 'chart' ? (
           <div className="card chart-card">
             {chart.candles === null ? <div className="skeleton chart-skel" /> :
-              <Chart candles={withLivePrice(chart.candles, live?.price, period)} resetKey={`${code}:${period}`}
+              <Chart candles={withLivePrice(chart.candles, live?.price, period, detail)} resetKey={`${code}:${period}`}
                 baseline={intraday ? d?.prev_close : undefined} initialCount={intraday ? 120 : 80} format={fmtPrice} current={price} />}
             <PeriodTabs periods={MAIN_PERIODS} value={period} onChange={setPeriod} />
           </div>
