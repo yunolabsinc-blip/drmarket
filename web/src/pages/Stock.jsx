@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { themesOfStock, useMarket } from '../lib/store'
 import { getDetail, getIndexChart, getLimitUps, getMarketOverview, getNews, getStockChart, getStockEvents, getWorldChart } from '../lib/api'
-import { fmtChange, fmtIndex, fmtPrice, fmtRate, fmtVolume, fmtWonShort, marketPhase, tone } from '../lib/format'
+import { fmtChange, fmtIndex, fmtPrice, fmtRate, fmtVolume, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import Chart from '../components/Chart'
 import OrderBook, { prefetchOrderbook } from '../components/OrderBook'
@@ -348,13 +348,36 @@ export default function Stock({ code }) {
 
 const INDEX_NAMES = { '0001': '코스피', '1001': '코스닥' }
 
+// 해외 차트(5분마다 받음)의 마지막 봉에 10초 시세를 반영 — 봉 날짜는 현지 날짜라 시세의 거래일(MM/DD)과 맞춰 본다
+function withWorldPrice(candles, world, period) {
+  const price = world?.value
+  if (!candles?.length || !price || !world.date) return candles
+  const last = candles[candles.length - 1]
+  const [mm, dd] = world.date.split('/')
+  const same = period === 'D' ? last.t.slice(5) === `${mm}-${dd}`
+    : period === 'M' ? last.t.slice(5, 7) === mm
+    : period === 'W' ? true
+    : period === 'Y'
+  if (!same || last.c === price) return candles
+  return [...candles.slice(0, -1), { ...last, c: price, h: Math.max(last.h, price), l: Math.min(last.l, price) }]
+}
+
 export function IndexPage({ code }) {
   const { indices } = useMarket()
   // 코스피·코스닥은 한투, 나머지(해외 지수·선물·환율·유가)는 시장종합에서 받은 네이버 지연 시세
   const domestic = !!INDEX_NAMES[code]
   const [overview, setOverview] = useState(() => getMarketOverview.peek())
-  useEffect(() => { if (!domestic) getMarketOverview().then(setOverview).catch(() => {}) }, [code])
   const world = domestic ? null : overview?.global?.find((g) => g.code === code)
+  const worldOpen = !!world && (world.open === true || (world.open == null && isMarketOpen(world.market)))
+  // 해외 시세는 시장종합에서 받음 — 그 시장이 열려 있으면 10초마다 (닫혀 있으면 3분)
+  useEffect(() => {
+    if (domestic) return
+    let alive = true, timer
+    const load = () => getMarketOverview().then((d) => alive && setOverview(d)).catch(() => {})
+      .finally(() => { if (alive) timer = setTimeout(load, document.visibilityState === 'visible' && worldOpen ? 10000 : 180000) })
+    load()
+    return () => { alive = false; clearTimeout(timer) }
+  }, [code, worldOpen])
   const periods = domestic ? INDEX_PERIODS : INDEX_PERIODS.filter((p) => (world?.periods || ['D']).includes(p.id))
   const [period, setPeriodState] = useState(() => loadPeriod('drm.indexPeriod', 'D'))
   const setPeriod = (v) => { setPeriodState(v); savePeriod('drm.indexPeriod', v) }
@@ -381,7 +404,8 @@ export function IndexPage({ code }) {
         </div>
         <div className="card chart-card">
           {chart.candles === null ? <div className="skeleton chart-skel" /> :
-            <Chart candles={chart.candles} resetKey={`${code}:${shown}`} format={fmtIndex} />}
+            <Chart candles={world ? withWorldPrice(chart.candles, world, shown) : chart.candles} resetKey={`${code}:${shown}`} format={fmtIndex}
+              current={cur?.value} />}
           {periods.length > 1 && <PeriodTabs periods={periods} value={shown} onChange={setPeriod} />}
         </div>
         <Disclaimer />

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMarket } from '../lib/store'
 import { getCalendar, getMarketNews, getMarketOverview } from '../lib/api'
-import { fmtIndex, fmtRate, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
+import { anyAbroadOpen, fmtIndex, fmtRate, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import { Sparkline } from '../components/Chart'
 import MarketNews, { TOPICS } from '../components/NewsList'
@@ -24,15 +24,17 @@ function useOverview(active) {
     if (!active) return
     let alive = true
     let timer
+    let global = getMarketOverview.peek()?.global
     const load = () => {
       const started = Date.now()
       getMarketOverview()
-        .then((d) => { if (alive) { setData(d); setFailed(false) } })
+        .then((d) => { global = d?.global; if (alive) { setData(d); setFailed(false) } })
         .catch(() => alive && setFailed(true))
         .finally(() => {
           if (!alive) return
           // 요청 시작 기준으로 장중 10초 간격 (응답에 걸린 시간만큼 덜 기다림)
-          const every = marketPhase().key === 'open' ? 10000 : 180000
+          // 미국 장·해외 선물·코스피 야간선물이 열려 있는 밤에도 10초
+          const every = marketPhase().key === 'open' || anyAbroadOpen(global) ? 10000 : 180000
           timer = setTimeout(load, Math.max(1000, every - (Date.now() - started)))
         })
     }

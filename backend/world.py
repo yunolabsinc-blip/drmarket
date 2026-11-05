@@ -76,8 +76,8 @@ async def _item(kind: str, code: str, name: str, market: str) -> dict | None:
 
 
 async def fetch_world() -> list[dict]:
-    """60초 동안은 받아 둔 것을 그대로 준다"""
-    if time.time() - _cache["at"] < 60 and _cache["items"]:
+    """10초 동안은 받아 둔 것을 그대로 준다 (미국 장·해외 선물은 앱이 10초마다 다시 받음)"""
+    if time.time() - _cache["at"] < 8 and _cache["items"]:
         return _cache["items"]
     out = await asyncio.gather(*[_item(*it) for it in ITEMS])
     items = [x for x in out if x]

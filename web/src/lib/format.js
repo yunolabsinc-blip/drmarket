@@ -63,6 +63,10 @@ export const fmtTime = (d) =>
 
 // 지수 카드의 장 열림 표시: kr 한국거래소 정규장(09:00~15:30), us 뉴욕 정규장(서머타임 자동), fx 서울 외환시장(09:00~다음날 02:00)
 // 공휴일은 따로 반영하지 않음
+// 해외 지수·선물·야간선물 중 지금 움직이는 것이 있는지 (네이버가 알려 준 장 상태 우선)
+export const anyAbroadOpen = (global) =>
+  isMarketOpen('us') || isMarketOpen('kn') || !!global?.some((g) => g.open === true || (g.open == null && g.market !== 'fx' && isMarketOpen(g.market)))
+
 export function isMarketOpen(market, now = new Date()) {
   const zone = market === 'us' ? 'America/New_York' : 'Asia/Seoul'
   const t = new Date(now.toLocaleString('en-US', { timeZone: zone }))
