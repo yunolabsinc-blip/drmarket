@@ -293,6 +293,8 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
   const last = candles[len - 1]
   const c = cross != null ? candles[cross] : null
   const prevC = cross != null && cross > 0 ? candles[cross - 1].c : baseline || null
+  // 분봉(전일 종가 기준선이 있는 당일 차트)은 MTS처럼 전일 종가 대비 등락률, 일·주·월봉은 직전 봉 대비
+  const refC = baseline > 0 ? baseline : prevC
   // a → b 변화율 문자열 (+12.34%)
   const pct = (b, a) => (a ? `${b >= a ? '+' : ''}${(((b - a) / a) * 100).toFixed(2)}%` : '')
   const tone = (b, a) => (b > a ? 'up' : b < a ? 'down' : '')
@@ -331,8 +333,8 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
             <rect x={width - PAD.right + 2} y={y(c.c) - 9} width={PAD.right - 4} height={18} rx="4" fill="var(--text)" />
             <text x={width - PAD.right + 6} y={y(c.c) + 4} className="chart-axis" fill="#fff">{format(c.c)}</text>
             {/* 고른 봉의 등락률을 가격선 위에 */}
-            {prevC ? (
-              <text x={width - PAD.right - 4} y={y(c.c) - 5} textAnchor="end" className={`chart-label chart-pct ${tone(c.c, prevC)}`}>{pct(c.c, prevC)}</text>
+            {refC ? (
+              <text x={width - PAD.right - 4} y={y(c.c) - 5} textAnchor="end" className={`chart-label chart-pct ${tone(c.c, refC)}`}>{pct(c.c, refC)}</text>
             ) : null}
           </>
         )}
@@ -350,11 +352,11 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
       {c && (
         <div className="chart-info">
           <b>{c.t}</b>
-          <span>시 <em className={c.o >= (prevC || c.o) ? 'up' : 'down'}>{format(c.o)}</em></span>
+          <span>시 <em className={c.o >= (refC || c.o) ? 'up' : 'down'}>{format(c.o)}</em></span>
           <span>고 <em className="up">{format(c.h)}</em></span>
           <span>저 <em className="down">{format(c.l)}</em></span>
-          <span>종 <em className={prevC ? (c.c > prevC ? 'up' : c.c < prevC ? 'down' : '') : ''}>{format(c.c)}</em>
-            {prevC ? <small className={c.c > prevC ? 'up' : c.c < prevC ? 'down' : ''}> {c.c > prevC ? '+' : ''}{(((c.c - prevC) / prevC) * 100).toFixed(2)}%</small> : null}</span>
+          <span>종 <em className={refC ? (c.c > refC ? 'up' : c.c < refC ? 'down' : '') : ''}>{format(c.c)}</em>
+            {refC ? <small className={c.c > refC ? 'up' : c.c < refC ? 'down' : ''}> {c.c > refC ? '+' : ''}{(((c.c - refC) / refC) * 100).toFixed(2)}%</small> : null}</span>
           <span>량 <em>{fmtNum(c.v)}</em></span>
           {cross < len - 1 && <span>현재가 대비 <em className={tone(now, c.c)}>{pct(now, c.c)}</em></span>}
         </div>
