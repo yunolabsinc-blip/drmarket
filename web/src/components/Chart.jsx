@@ -352,11 +352,11 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
       {c && (
         <div className="chart-info">
           <b>{c.t}</b>
-          <span>시 <em className={c.o >= (refC || c.o) ? 'up' : 'down'}>{format(c.o)}</em></span>
-          <span>고 <em className="up">{format(c.h)}</em></span>
-          <span>저 <em className="down">{format(c.l)}</em></span>
-          <span>종 <em className={refC ? (c.c > refC ? 'up' : c.c < refC ? 'down' : '') : ''}>{format(c.c)}</em>
-            {refC ? <small className={c.c > refC ? 'up' : c.c < refC ? 'down' : ''}> {c.c > refC ? '+' : ''}{(((c.c - refC) / refC) * 100).toFixed(2)}%</small> : null}</span>
+          {/* 시·고·저·종 모두 기준가(분봉은 전일 종가, 그 외는 직전 봉 종가) 대비 % */}
+          {[['시', c.o, ''], ['고', c.h, 'up'], ['저', c.l, 'down'], ['종', c.c, '']].map(([k, v, cls]) => (
+            <span key={k}>{k} <em className={refC ? tone(v, refC) : cls}>{format(v)}</em>
+              {refC ? <small className={tone(v, refC)}> {pct(v, refC)}</small> : null}</span>
+          ))}
           <span>량 <em>{fmtNum(c.v)}</em></span>
           {cross < len - 1 && <span>현재가 대비 <em className={tone(now, c.c)}>{pct(now, c.c)}</em></span>}
         </div>
