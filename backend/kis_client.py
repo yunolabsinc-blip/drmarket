@@ -1255,7 +1255,7 @@ def _kospi200_front_month(now: datetime | None = None) -> str:
 
 async def fetch_night_futures() -> dict | None:
     """코스피200 야간선물 (한국거래소 야간시장, 18:00~다음날 06:00) — 기준가는 그날 주간 종가"""
-    cached = _cache_get("night_futures", 8)
+    cached = _cache_get("night_futures", 2)
     if cached:
         return cached
     code = _kospi200_front_month()

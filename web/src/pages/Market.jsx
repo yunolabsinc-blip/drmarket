@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMarket } from '../lib/store'
-import { getCalendar, getMarketNews, getMarketOverview } from '../lib/api'
+import { getCalendar, getMarketGlobal, getMarketNews, getMarketOverview } from '../lib/api'
 import { anyAbroadOpen, fmtIndex, fmtRate, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import { Sparkline } from '../components/Chart'
@@ -23,23 +23,42 @@ function useOverview(active) {
   useEffect(() => {
     if (!active) return
     let alive = true
-    let timer
+    let timer, fast
     let global = getMarketOverview.peek()?.global
+    let fastAt = 0   // 해외 시세를 따로 마지막으로 받은 시각 (시장종합의 조금 늦은 해외 시세로 되돌리지 않게)
     const load = () => {
       const started = Date.now()
       getMarketOverview()
-        .then((d) => { global = d?.global; if (alive) { setData(d); setFailed(false) } })
+        .then((d) => {
+          if (!alive) return
+          if (Date.now() - fastAt < 15000) setData((p) => ({ ...d, global: p?.global || d.global }))
+          else { global = d?.global; setData(d) }
+          setFailed(false)
+        })
         .catch(() => alive && setFailed(true))
         .finally(() => {
           if (!alive) return
           // 요청 시작 기준으로 장중 10초 간격 (응답에 걸린 시간만큼 덜 기다림)
-          // 미국 장·해외 선물·코스피 야간선물이 열려 있는 밤에도 10초
-          const every = marketPhase().key === 'open' || anyAbroadOpen(global) ? 10000 : 180000
+          const every = marketPhase().key === 'open' ? 10000 : 180000
           timer = setTimeout(load, Math.max(1000, every - (Date.now() - started)))
         })
     }
+    // 미국 장·해외 선물·코스피 야간선물이 열려 있으면 해외 시세만 3초마다 (닫혀 있으면 1분마다 열렸는지 확인)
+    const loadFast = () => {
+      if (!anyAbroadOpen(global) || document.visibilityState !== 'visible') { fast = setTimeout(loadFast, 60000); return }
+      const started = Date.now()
+      getMarketGlobal()
+        .then((g) => {
+          if (!alive || !g?.global?.length) return
+          global = g.global; fastAt = Date.now()
+          setData((p) => (p ? { ...p, global: g.global } : p))
+        })
+        .catch(() => {})
+        .finally(() => { if (alive) fast = setTimeout(loadFast, Math.max(500, 3000 - (Date.now() - started))) })
+    }
     load()
-    return () => { alive = false; clearTimeout(timer) }
+    fast = setTimeout(loadFast, 1500)
+    return () => { alive = false; clearTimeout(timer); clearTimeout(fast) }
   }, [active])
   return { data, failed }
 }

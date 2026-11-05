@@ -239,19 +239,31 @@ async def get_market_indices():
     return {"indices": await kis.fetch_market_indices()}
 
 
+async def _global() -> list[dict]:
+    """미국 지수·해외 선물·환율·유가(네이버) + 코스피200 야간선물(한투)"""
+    global_, night = await asyncio.gather(world.fetch_world(), kis.fetch_night_futures())
+    if not global_:   # 네이버를 못 받으면 한투 해외지수로
+        global_ = await kis.fetch_global_indices()
+    if night:   # 코스피200 야간선물은 해외 선물 뒤에
+        at = next((i + 1 for i, g in enumerate(global_) if g["code"] == "EScv1"), len(global_))
+        global_ = [*global_[:at], night, *global_[at:]]
+    return global_
+
+
+@app.get("/api/market/global", summary="해외 지수·야간선물 (빠른 갱신용)")
+async def get_market_global():
+    """시장종합의 해외 부분만 — 미국 장·야간선물이 열려 있을 때 앱이 3초마다 받는다"""
+    return JSONResponse({"global": await _global()}, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/api/market/overview", summary="시장종합")
 async def get_market_overview(background: BackgroundTasks):
     """투자자별 순매수(코스피·코스닥), 코스피 업종별 등락, 미국 주요 지수"""
     async def compute():
-        kospi, kosdaq, sec_p, sec_q, global_, night = await asyncio.gather(
+        kospi, kosdaq, sec_p, sec_q, global_ = await asyncio.gather(
             kis.fetch_investor_flow("kospi"), kis.fetch_investor_flow("kosdaq"),
-            kis.fetch_sectors("kospi"), kis.fetch_sectors("kosdaq"), world.fetch_world(), kis.fetch_night_futures(),
+            kis.fetch_sectors("kospi"), kis.fetch_sectors("kosdaq"), _global(),
         )
-        if not global_:   # 네이버를 못 받으면 한투 해외지수로
-            global_ = await kis.fetch_global_indices()
-        if night:   # 코스피200 야간선물은 해외 선물 뒤에
-            at = next((i + 1 for i, g in enumerate(global_) if g["code"] == "EScv1"), len(global_))
-            global_ = [*global_[:at], night, *global_[at:]]
         return {"investors": {"kospi": kospi, "kosdaq": kosdaq},
                 "sectors": sec_p, "sectors_by_market": {"kospi": sec_p, "kosdaq": sec_q}, "global": global_}
     # 새로 켜진 서버도 다른 서버가 받아 둔 결과를 바로 줌 (1초 넘게 걸리던 첫 응답)

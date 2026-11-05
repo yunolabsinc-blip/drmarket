@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { themesOfStock, useMarket } from '../lib/store'
-import { getDetail, getIndexChart, getLimitUps, getMarketOverview, getNews, getStockChart, getStockEvents, getWorldChart } from '../lib/api'
+import { getDetail, getIndexChart, getLimitUps, getMarketGlobal, getMarketOverview, getNews, getStockChart, getStockEvents, getWorldChart } from '../lib/api'
 import { fmtChange, fmtIndex, fmtPrice, fmtRate, fmtVolume, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import Chart from '../components/Chart'
@@ -348,7 +348,7 @@ export default function Stock({ code }) {
 
 const INDEX_NAMES = { '0001': '코스피', '1001': '코스닥' }
 
-// 해외 차트(5분마다 받음)의 마지막 봉에 10초 시세를 반영 — 봉 날짜는 현지 날짜라 시세의 거래일(MM/DD)과 맞춰 본다
+// 해외 차트(5분마다 받음)의 마지막 봉에 3초 시세를 반영 — 봉 날짜는 현지 날짜라 시세의 거래일(MM/DD)과 맞춰 본다
 function withWorldPrice(candles, world, period) {
   const price = world?.value
   if (!candles?.length || !price || !world.date) return candles
@@ -369,12 +369,12 @@ export function IndexPage({ code }) {
   const [overview, setOverview] = useState(() => getMarketOverview.peek())
   const world = domestic ? null : overview?.global?.find((g) => g.code === code)
   const worldOpen = !!world && (world.open === true || (world.open == null && isMarketOpen(world.market)))
-  // 해외 시세는 시장종합에서 받음 — 그 시장이 열려 있으면 10초마다 (닫혀 있으면 3분)
+  // 해외 시세는 해외 부분만 따로 받음 — 그 시장이 열려 있으면 3초마다 (닫혀 있으면 3분)
   useEffect(() => {
     if (domestic) return
     let alive = true, timer
-    const load = () => getMarketOverview().then((d) => alive && setOverview(d)).catch(() => {})
-      .finally(() => { if (alive) timer = setTimeout(load, document.visibilityState === 'visible' && worldOpen ? 10000 : 180000) })
+    const load = () => (overview ? getMarketGlobal() : getMarketOverview()).then((d) => alive && d?.global?.length && setOverview(d)).catch(() => {})
+      .finally(() => { if (alive) timer = setTimeout(load, document.visibilityState === 'visible' && worldOpen ? 3000 : 180000) })
     load()
     return () => { alive = false; clearTimeout(timer) }
   }, [code, worldOpen])

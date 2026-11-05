@@ -55,6 +55,7 @@ export const getRanking = endpoint((type) =>
   type === 'down' ? '/api/ranking/change?direction=down' : `/api/ranking/${type === 'up' ? 'change' : type}`)
 export const getOrderbook = (code) => api(`/api/stock/${code}/orderbook`, { timeout: 10000 })
 export const getMarketOverview = endpoint(() => '/api/market/overview', { timeout: 30000 })
+export const getMarketGlobal = () => api('/api/market/global', { timeout: 8000 })   // 해외 지수·야간선물만 (빠른 갱신)
 export const getDetail = endpoint((code) => `/api/stock/${code}/detail`)
 export const getStockChart = (code, period, quick) => api(`/api/stock/${code}/chart?period=${period}${quick ? '&quick=1' : ''}`, { timeout: 30000 })
 export const getIndexChart = endpoint((code, period) => `/api/index/${code}/chart?period=${period}`)

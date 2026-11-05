@@ -22,6 +22,7 @@ ITEMS = [
     ("energy", "CLcv1", "WTI", "fut"),
 ]
 _cache: dict = {"at": 0.0, "items": []}
+_hist: dict = {}   # 코드 → (받은 시각, 최근 10일 시세) — 미니 차트는 5분마다만
 _client: httpx.AsyncClient | None = None
 
 
@@ -49,8 +50,13 @@ async def _get(path: str):
 
 async def _item(kind: str, code: str, name: str, market: str) -> dict | None:
     basic_path, hist_path = _paths(kind, code)
+    old = _hist.get(code)
     try:
-        basic, hist = await asyncio.gather(_get(basic_path), _get(hist_path))
+        if old and time.time() - old[0] < 300:
+            basic, hist = await _get(basic_path), old[1]
+        else:
+            basic, hist = await asyncio.gather(_get(basic_path), _get(hist_path))
+            _hist[code] = (time.time(), hist)
     except Exception:
         return None
     b = basic.get("exchangeInfo", basic) if kind == "exchange" else basic
@@ -76,8 +82,8 @@ async def _item(kind: str, code: str, name: str, market: str) -> dict | None:
 
 
 async def fetch_world() -> list[dict]:
-    """10초 동안은 받아 둔 것을 그대로 준다 (미국 장·해외 선물은 앱이 10초마다 다시 받음)"""
-    if time.time() - _cache["at"] < 8 and _cache["items"]:
+    """2초 동안은 받아 둔 것을 그대로 준다 (해외 장이 열려 있으면 앱이 3초마다 다시 받음)"""
+    if time.time() - _cache["at"] < 2 and _cache["items"]:
         return _cache["items"]
     out = await asyncio.gather(*[_item(*it) for it in ITEMS])
     items = [x for x in out if x]
