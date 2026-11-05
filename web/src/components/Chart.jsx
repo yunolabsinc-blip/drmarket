@@ -19,6 +19,8 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
   const [view, setView] = useState({ count: initialCount, end: candles?.length || 0 })
   const [cross, setCross] = useState(null)      // 십자선 위치 (전체 배열 인덱스)
   const gesture = useRef(null)
+  const crossOn = useRef(false)   // 터치 처리기(effect 안)에서 십자선이 떠 있는지 알기 위해
+  crossOn.current = cross != null
   const live = useRef({})                        // 터치 핸들러에서 최신 값을 읽기 위한 참조
   const canvas = useRef(null)
   const frame = useRef({ id: 0, next: null })
@@ -51,6 +53,7 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
     const el = wrap.current
     if (!el) return
     let g = null
+    let hold = 0   // 길게 누르기 타이머
     const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
     const onStart = (e) => {
       if (e.touches.length === 2) {
@@ -58,7 +61,16 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
         e.preventDefault()
       } else if (e.touches.length === 1) {
         const t = e.touches[0]
-        g = { mode: null, x0: t.clientX, y0: t.clientY, lastY: t.clientY, end0: live.current.end }
+        g = { mode: null, x0: t.clientX, y0: t.clientY, lastY: t.clientY, end0: live.current.end, wasCross: crossOn.current }
+        // 누른 채로 잠깐(0.25초) 있으면 십자선 모드 — 그대로 움직이면 봉마다 시가·고가·저가·종가가 나온다
+        clearTimeout(hold)
+        const g0 = g
+        hold = setTimeout(() => {
+          if (g !== g0 || g.mode) return
+          g.mode = 'cross'
+          setCross(idxAt(g.x0))
+          navigator.vibrate?.(10)
+        }, 250)
       }
     }
     const onMove = (e) => {
@@ -77,10 +89,15 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
       if (!g.mode) {
         const dx = t.clientX - g.x0, dy = t.clientY - g.y0
         if (Math.max(Math.abs(dx), Math.abs(dy)) < 6) return
-        g.mode = Math.abs(dx) > Math.abs(dy) ? 'pan' : 'scroll'
+        clearTimeout(hold)
+        // 십자선이 떠 있을 때 가로로 움직이면 십자선을 옮기고, 아니면 차트를 넘긴다
+        g.mode = Math.abs(dx) > Math.abs(dy) ? (g.wasCross ? 'cross' : 'pan') : 'scroll'
         if (g.mode === 'pan') setCross(null)
       }
-      if (g.mode === 'pan') {
+      if (g.mode === 'cross') {
+        e.preventDefault()
+        setCross(idxAt(t.clientX))
+      } else if (g.mode === 'pan') {
         e.preventDefault()
         const nextEnd = clampEnd(g.end0 - Math.round((t.clientX - g.x0) / live.current.step))
         setViewSoon({ count: live.current.count, end: nextEnd })
@@ -91,11 +108,10 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
       }
     }
     const onEnd = (e) => {
+      clearTimeout(hold)
       if (!g) return
-      if (!g.mode && e.changedTouches.length === 1) {
-        const i = idxAt(e.changedTouches[0].clientX)
-        setCross((c) => (c === i ? null : i))
-      }
+      // 짧게 누르면: 십자선이 있으면 닫고, 없으면 그 봉을 고른다
+      if (!g.mode && e.changedTouches.length === 1) setCross(g.wasCross ? null : idxAt(e.changedTouches[0].clientX))
       if (e.touches.length === 0) g = null
       else if (g.mode === 'pinch') g = { mode: 'scroll' }   // 핀치 후 남은 손가락은 무시
     }
@@ -114,6 +130,7 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
       el.removeEventListener('touchmove', onMove)
       el.removeEventListener('touchend', onEnd)
       el.removeEventListener('touchcancel', onEnd)
+      clearTimeout(hold)
       cancelAnimationFrame(frame.current.id)
       frame.current.id = 0
     }
