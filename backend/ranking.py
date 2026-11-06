@@ -82,6 +82,9 @@ async def _quote_chunk(chunk: list[list], out: dict):
             "change_rate": float(o.get("prdy_ctrt", 0) or 0),
             "volume": int(float(o.get("acml_vol", 0) or 0)),
             "trading_value": int(float(o.get("acml_tr_pbmn", 0) or 0)),
+            "open": int(float(o.get("inter2_oprc", 0) or 0)),
+            "high": int(float(o.get("inter2_hgpr", 0) or 0)),
+            "low": int(float(o.get("inter2_lwpr", 0) or 0)),
         }
         kis._cache_set(f"price:{c}", item)   # 종목 시세 조회도 이 값을 같이 씀
         out[c] = item

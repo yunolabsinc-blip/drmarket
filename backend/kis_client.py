@@ -447,6 +447,9 @@ async def fetch_stock_price(code: str) -> dict:
             "change_rate": change_rate,
             "volume": volume,
             "trading_value": t_value,
+            "open": int(o.get("stck_oprc", 0) or 0),
+            "high": int(o.get("stck_hgpr", 0) or 0),
+            "low": int(o.get("stck_lwpr", 0) or 0),
         }
         _cache_set(f"price:{code}", result)
         return result
@@ -490,6 +493,9 @@ async def fetch_batch_prices(codes: list[str]) -> list[dict]:
                     "change_rate": float(o.get("prdy_ctrt", 0) or 0),
                     "volume": int(float(o.get("acml_vol", 0) or 0)),
                     "trading_value": int(float(o.get("acml_tr_pbmn", 0) or 0)),
+                    "open": int(float(o.get("inter2_oprc", 0) or 0)),
+                    "high": int(float(o.get("inter2_hgpr", 0) or 0)),
+                    "low": int(float(o.get("inter2_lwpr", 0) or 0)),
                 }
                 _cache_set(f"price:{c}", item)
                 results[c] = item

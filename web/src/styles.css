@@ -402,12 +402,21 @@ b { font-weight: 650; }
 .flow-bar { position: absolute; top: 0; bottom: 0; border-radius: 5px; background: var(--text-3); }
 .flow-bar.up { background: var(--up); }
 .flow-bar.down { background: var(--down); }
-.cross { padding: 10px 18px 12px; }
-.cross-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-3); }
+.cross { padding: 10px 14px 12px; }
+.cross-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 4px 8px; margin-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-3); }
 .cross-head .up { text-align: right; }
-.cross-row { display: grid; grid-template-columns: 92px 1fr 66px; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.cross-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cross-rate { text-align: right; font-size: 13.5px; font-weight: 650; white-space: nowrap; }
+.cross-body-wrap { display: grid; grid-template-columns: 38px minmax(0, 1fr); }
+.cross-axis { position: relative; height: 240px; }
+.cross-axis span { position: absolute; right: 6px; transform: translateY(-50%); font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+.cross-scroll { display: flex; overflow-x: auto; overscroll-behavior-x: contain; }
+.cross-col { flex: 0 0 62px; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
+.cross-plot { position: relative; display: block; height: 240px; }
+.cross-grid { position: absolute; left: 0; right: 0; height: 1px; background: var(--line); }
+.cross-grid.zero { background: var(--line-strong); }
+.cross-wick { position: absolute; left: 50%; width: 2px; margin-left: -1px; background: currentColor; }
+.cross-candle { position: absolute; left: 9px; right: 9px; min-height: 4px; transform: translateY(-2px); border-radius: 1px; background: currentColor; }
+.cross-name { display: block; margin-top: 8px; padding: 0 3px; color: var(--text); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cross-rate { display: block; margin-top: 1px; font-size: 12px; font-weight: 650; white-space: nowrap; }
 .flow-value, .sector-rate { text-align: right; font-size: 14px; font-weight: 650; white-space: nowrap; }
 .flow-table { width: 100%; margin-top: 14px; border-collapse: collapse; font-size: 12.5px; }
 .flow-table th { color: var(--text-3); font-weight: 600; text-align: right; padding: 6px 0; border-bottom: 1px solid var(--line); }
