@@ -17,7 +17,7 @@ let events = {}       // { name: count }
 let current = null    // { page, since }
 
 const pageKey = (route) => {
-  if (route.page === 'market' && (route.param === 'news' || route.param === 'calendar' || route.param === 'cross')) return `market/${route.param}`
+  if (route.page === 'market' && (route.param === 'news' || route.param === 'calendar')) return `market/${route.param}`
   return route.page || 'home'
 }
 

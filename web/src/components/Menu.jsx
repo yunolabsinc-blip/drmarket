@@ -7,7 +7,6 @@ const LINKS = [
   { href: '#/themes', label: '실시간 테마' },
   { href: '#/rank', label: '순위' },
   { href: '#/market', label: '시장종합' },
-  { href: '#/market/cross', label: '종목별 등락' },
   { href: '#/market/news', label: '뉴스' },
   { href: '#/market/calendar', label: '시장 일정' },
   { href: '#/watch', label: '관심종목' },

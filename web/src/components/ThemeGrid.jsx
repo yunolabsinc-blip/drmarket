@@ -58,6 +58,25 @@ export function ThemeHeadline({ item, large, label, defaultOpen = false }) {
   )
 }
 
+// 종목 오른쪽의 작은 십자: 세로선 = 고가~저가, 가로 몸통 = 시가~현재가, 가운데 줄 = 전일 종가
+const crossPct = (s) => {
+  const pct = (v) => ((v - s.prev_close) / s.prev_close) * 100
+  return { open: pct(s.open), now: pct(s.price), high: pct(Math.max(s.high, s.open, s.price)), low: pct(Math.min(s.low, s.open, s.price)) }
+}
+const hasCross = (s) => s.prev_close > 0 && s.open > 0 && s.high > 0 && s.low > 0   // 장 시작 전에는 시가가 없어 그리지 않음
+
+function MiniCross({ stock, range }) {
+  if (!hasCross(stock)) return null
+  const { open, now, high, low } = crossPct(stock)
+  const y = (p) => 50 - (p / range) * 50
+  return (
+    <span className={`ts-cross ${tone(stock.change_rate)}`} aria-hidden="true">
+      <i className="ts-wick" style={{ top: `${y(high)}%`, bottom: `${100 - y(low)}%` }} />
+      <i className="ts-candle" style={{ top: `${y(Math.max(open, now))}%`, bottom: `${100 - y(Math.min(open, now))}%` }} />
+    </span>
+  )
+}
+
 function ThemeTile({ theme, rank, sort, total, news }) {
   const { flash } = useMarket()
   // 거래대금 모드에서는 돈이 몰린 종목부터, 상승률 모드에서는 많이 오른 종목부터
@@ -67,6 +86,8 @@ function ThemeTile({ theme, rank, sort, total, news }) {
     .slice(0, 4)
   const maxValue = Math.max(1, ...stocks.map((s) => s.trading_value || 0))
   const share = total ? (theme.value / total) * 100 : 0
+  // 한 타일의 십자는 같은 눈금으로 비교 (작은 등락이 부풀어 보이지 않게 최소 ±3%)
+  const crossRange = Math.max(3, ...stocks.filter(hasCross).flatMap((s) => { const c = crossPct(s); return [Math.abs(c.high), Math.abs(c.low)] }))
 
   return (
     <article className="tile" onClick={() => { track('theme_open'); go(`/theme/${theme.id}`) }}>
@@ -84,6 +105,7 @@ function ThemeTile({ theme, rank, sort, total, news }) {
         {stocks.map((s) => (
           <li key={s.code}>
             <button className="tile-stock" data-stock={s.code} onClick={(e) => { e.stopPropagation(); go(`/stock/${s.code}`) }}>
+              <span className="ts-main">
               <span className="ts-top">
                 <span className="ts-name">{s.name}</span>
                 <span className={`ts-rate ${tone(s.change_rate)}`}>{fmtRate(s.change_rate)}</span>
@@ -93,6 +115,8 @@ function ThemeTile({ theme, rank, sort, total, news }) {
                 <span className="ts-value">{fmtWonShort(s.trading_value)}</span>
               </span>
               <span className="ts-bar"><i className={tone(s.change_rate)} style={{ width: `${((s.trading_value || 0) / maxValue) * 100}%` }} /></span>
+              </span>
+              <MiniCross stock={s} range={crossRange} />
             </button>
           </li>
         ))}

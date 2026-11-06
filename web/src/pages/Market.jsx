@@ -6,7 +6,6 @@ import { go } from '../lib/router'
 import { Sparkline } from '../components/Chart'
 import MarketNews, { TOPICS } from '../components/NewsList'
 import Calendar from '../components/Calendar'
-import CrossChart from '../components/CrossChart'
 import { Disclaimer, Section, Skeleton, StatusLine } from '../components/ui'
 import { ThemeHeadline } from '../components/ThemeGrid'
 import { prefetchKeyNews, useKeyNews } from '../lib/themeNews'
@@ -14,7 +13,6 @@ import { track } from '../lib/analytics'
 
 const TABS = [
   { id: 'overview', label: '종합', path: '/market' },
-  { id: 'cross', label: '등락', path: '/market/cross' },
   { id: 'news', label: '뉴스', path: '/market/news' },
   { id: 'calendar', label: '일정', path: '/market/calendar' },
 ]
@@ -290,7 +288,7 @@ export default function Market({ tab }) {
   }, [])
   return (
     <main className="page">
-      <h1 className="page-title">{active === 'news' ? '뉴스' : active === 'calendar' ? '시장 일정' : active === 'cross' ? '종목별 등락' : '시장종합'}</h1>
+      <h1 className="page-title">{active === 'news' ? '뉴스' : active === 'calendar' ? '시장 일정' : '시장종합'}</h1>
       <StatusLine />
       <div className="segmented" role="tablist">
         {TABS.map((t) => (
@@ -298,7 +296,6 @@ export default function Market({ tab }) {
         ))}
       </div>
       {active === 'overview' && <Overview />}
-      {active === 'cross' && <CrossChart />}
       {active === 'news' && <MarketNews />}
       {active === 'calendar' && <Calendar />}
       <Disclaimer />
