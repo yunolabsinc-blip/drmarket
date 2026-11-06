@@ -1,13 +1,18 @@
 name: Deploy to GitHub Pages
 
+# 사이트는 push로 바로 바뀌지 않는다. 매일 새벽 코드 수정과 종목 목록(상장·폐지·사명 변경)을 모아
+# 바뀐 것이 있을 때만 반영한다. 급하면 수동 실행: gh workflow run deploy.yml
 on:
-  push:
-    branches: [ main ]
-    paths: [ 'web/**', '.github/workflows/deploy.yml' ]
   workflow_dispatch:
-  # 매일 07:30 KST(전날 22:30 UTC) — 신규 상장·폐지·사명 변경을 종목 검색 목록에 반영
+    inputs:
+      force:
+        description: '바뀐 것이 없어도 배포'
+        type: boolean
+        default: true
+  # GitHub 예약은 3~5시간씩 늦게 도는 일이 많아 02:30~06:30 KST에 여러 번 걸어 두고,
+  # 실제 배포는 06:30~08:00 KST에 도착한 실행만 한다 (장중 배포 방지, 두 번째부터는 바뀐 것이 없어 건너뜀)
   schedule:
-    - cron: '30 22 * * *'
+    - cron: '30 17-21 * * *'
 
 permissions:
   contents: read
@@ -28,33 +33,61 @@ jobs:
       run:
         working-directory: web
     steps:
+      - name: Check time window
+        id: window
+        working-directory: .
+        run: |
+          now=$(TZ=Asia/Seoul date +%H%M)
+          echo "KST $now"
+          if [ "${{ github.event_name }}" = "schedule" ] && { [ "$now" -lt 0630 ] || [ "$now" -ge 0800 ]; }; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Checkout
+        if: steps.window.outputs.skip != 'true'
         uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: web/package-lock.json
       - name: Setup Python
+        if: steps.window.outputs.skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       # 한국투자증권 종목 마스터로 public/stocks.json 갱신 (실패하면 저장소에 있는 목록을 그대로 씀)
       - name: Update stock list
+        if: steps.window.outputs.skip != 'true'
         run: python scripts/build_stocks.py
         continue-on-error: true
+      # 코드(web 폴더)와 종목 목록의 지문을 지금 사이트에 올라간 것과 비교
+      - name: Check for changes
+        id: check
+        if: steps.window.outputs.skip != 'true'
+        run: |
+          id="$(git rev-parse HEAD:web)-$(sha256sum public/stocks.json | cut -c1-16)"
+          live="$(curl -fsS "https://yunolabsinc-blip.github.io/drmarket/build-id.txt?t=$(date +%s)" || true)"
+          echo "new=$id live=$live"
+          echo "$id" > public/build-id.txt
+          if [ "$id" != "$live" ] || [ "${{ inputs.force }}" = "true" ]; then echo "deploy=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Setup Node
+        if: steps.check.outputs.deploy == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Install
+        if: steps.check.outputs.deploy == 'true'
         run: npm ci
       - name: Build
+        if: steps.check.outputs.deploy == 'true'
         run: npm run build
       - name: Setup Pages
+        if: steps.check.outputs.deploy == 'true'
         uses: actions/configure-pages@v5
       # 빌드 결과물(web/dist)만 공개 — 저장소의 다른 파일은 배포되지 않음
       - name: Upload artifact
+        if: steps.check.outputs.deploy == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: web/dist
       - name: Deploy to GitHub Pages
+        if: steps.check.outputs.deploy == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
