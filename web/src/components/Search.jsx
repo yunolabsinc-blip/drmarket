@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMarket } from '../lib/store'
 import { go } from '../lib/router'
-import { CloseIcon, Rate, SearchIcon } from './ui'
+import { CloseIcon, MiniCross, Rate, SearchIcon } from './ui'
 
 const norm = (s) => s.toLowerCase().replace(/\s/g, '')
 
@@ -99,6 +99,7 @@ export default function Search({ onClose }) {
                   <b>{h.name}</b>
                   <span className="muted">{h.sub}</span>
                   {h.code && prices[h.code] && <Rate value={prices[h.code].change_rate} />}
+                  {h.code && prices[h.code] && <MiniCross stock={prices[h.code]} />}
                 </button>
                 <button className="icon-btn search-history-del" aria-label={`${h.name} 검색 기록 삭제`}
                   onClick={() => updateHistory(history.filter((x) => x.path !== h.path))}><CloseIcon /></button>
@@ -126,6 +127,7 @@ export default function Search({ onClose }) {
                 <b>{s.name}</b>
                 <span className="muted">{s.market === 'P' ? '코스피' : '코스닥'} {s.code}</span>
                 {prices[s.code] && <Rate value={prices[s.code].change_rate} />}
+                {prices[s.code] && <MiniCross stock={prices[s.code]} />}
               </button>
             ))}
           </>
