@@ -402,6 +402,12 @@ b { font-weight: 650; }
 .flow-bar { position: absolute; top: 0; bottom: 0; border-radius: 5px; background: var(--text-3); }
 .flow-bar.up { background: var(--up); }
 .flow-bar.down { background: var(--down); }
+.cross { padding: 10px 18px 12px; }
+.cross-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-3); }
+.cross-head .up { text-align: right; }
+.cross-row { display: grid; grid-template-columns: 92px 1fr 66px; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.cross-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cross-rate { text-align: right; font-size: 13.5px; font-weight: 650; white-space: nowrap; }
 .flow-value, .sector-rate { text-align: right; font-size: 14px; font-weight: 650; white-space: nowrap; }
 .flow-table { width: 100%; margin-top: 14px; border-collapse: collapse; font-size: 12.5px; }
 .flow-table th { color: var(--text-3); font-weight: 600; text-align: right; padding: 6px 0; border-bottom: 1px solid var(--line); }
