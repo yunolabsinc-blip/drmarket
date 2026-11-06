@@ -3,7 +3,7 @@ import { useMarket } from '../lib/store'
 import { getRanking } from '../lib/api'
 import { go } from '../lib/router'
 import { fmtPrice, fmtVolume, fmtWon, marketPhase } from '../lib/format'
-import { Disclaimer, Rate, Skeleton, StatusLine } from '../components/ui'
+import { Disclaimer, MiniCross, Rate, Skeleton, StatusLine } from '../components/ui'
 
 const TYPES = [
   { id: 'amount', label: '거래대금' },
@@ -56,7 +56,7 @@ export function useRanking(type) {
   }, [top, watch])
   const merged = filtered.map((r) => {
     const p = prices[r.code]
-    return p ? { ...r, price: p.price, change_rate: p.change_rate, change: p.change, volume: p.volume || r.volume, trading_value: p.trading_value || r.trading_value } : r
+    return p ? { ...r, price: p.price, change_rate: p.change_rate, change: p.change, volume: p.volume || r.volume, trading_value: p.trading_value || r.trading_value, open: p.open || r.open, high: p.high || r.high, low: p.low || r.low } : r
   })
   // 실시간 값을 덧입힌 뒤 화면에 보이는 숫자 기준으로 다시 정렬 (순서와 숫자가 어긋나지 않게)
   const metric = { amount: (r) => r.trading_value || 0, volume: (r) => r.volume || 0, up: (r) => r.change_rate ?? -999, down: (r) => -(r.change_rate ?? 999) }[type]
@@ -65,7 +65,7 @@ export function useRanking(type) {
 }
 
 // 순위 한 줄: 값이 그대로인 줄은 시세가 갱신돼도 다시 그리지 않음 (100줄 전체를 매번 그리던 것)
-const RankRow = memo(function RankRow({ code, name, price, rate, sub, rank, flash, fav }) {
+const RankRow = memo(function RankRow({ code, name, price, rate, sub, rank, flash, fav, prev, open, high, low }) {
   return (
     <button className="stock-row" data-stock={code} onClick={() => go(`/stock/${code}`)}>
       <span className="rank-no">{rank}</span>
@@ -80,6 +80,7 @@ const RankRow = memo(function RankRow({ code, name, price, rate, sub, rank, flas
           <small>{sub}</small>
         </span>
       </span>
+      <MiniCross stock={{ price, change_rate: rate, prev_close: prev, open, high, low }} />
     </button>
   )
 })
@@ -123,6 +124,7 @@ export default function Rank() {
         <div className="card list">
           {rows.slice(0, limit).map((s, i) => (
             <RankRow key={s.code} code={s.code} name={s.name} price={s.price} rate={s.change_rate} rank={i + 1}
+              prev={s.prev_close} open={s.open} high={s.high} low={s.low}
               sub={type === 'volume' ? fmtVolume(s.volume) : type === 'amount' ? fmtWon(s.trading_value) : ''}
               flash={flash[s.code]} fav={favorites.includes(s.code)} />
           ))}

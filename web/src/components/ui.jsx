@@ -92,6 +92,27 @@ export function RatePill({ value }) {
   return <span className={`rate-pill ${tone(value)}`}>{fmtRate(value)}</span>
 }
 
+// 종목 오른쪽의 작은 십자: 세로선 = 고가~저가, 가로 몸통 = 시가~현재가, 가운데 줄 = 전일 종가
+export const crossPct = (s) => {
+  const pct = (v) => ((v - s.prev_close) / s.prev_close) * 100
+  return { open: pct(s.open), now: pct(s.price), high: pct(Math.max(s.high, s.open, s.price)), low: pct(Math.min(s.low, s.open, s.price)) }
+}
+export const hasCross = (s) => s.prev_close > 0 && s.open > 0 && s.high > 0 && s.low > 0   // 장 시작 전에는 시가가 없어 그리지 않음
+
+// range를 주지 않으면 종목별 눈금 (작은 등락이 부풀어 보이지 않게 최소 ±3%). 값이 없을 때도 자리는 남겨 목록 숫자가 어긋나지 않게
+export function MiniCross({ stock, range }) {
+  if (!hasCross(stock)) return <span className="ts-cross empty" aria-hidden="true" />
+  const { open, now, high, low } = crossPct(stock)
+  const r = range || Math.max(3, Math.abs(high), Math.abs(low))
+  const y = (p) => 50 - (p / r) * 50
+  return (
+    <span className={`ts-cross ${tone(stock.change_rate)}`} aria-hidden="true">
+      <i className="ts-wick" style={{ top: `${y(high)}%`, bottom: `${100 - y(low)}%` }} />
+      <i className="ts-candle" style={{ top: `${y(Math.max(open, now))}%`, bottom: `${100 - y(Math.min(open, now))}%` }} />
+    </span>
+  )
+}
+
 export function StockRow({ stock, rank, right, onClick }) {
   const { flash, favorites } = useMarket()
   const f = flash[stock.code]
@@ -106,6 +127,7 @@ export function StockRow({ stock, rank, right, onClick }) {
         <b className={`price ${f ? `flash-${f}` : ''}`}>{stock.price ? fmtPrice(stock.price) : '—'}</b>
         {right ?? <Rate value={stock.change_rate} />}
       </span>
+      <MiniCross stock={stock} />
     </button>
   )
 }

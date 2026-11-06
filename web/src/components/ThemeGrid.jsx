@@ -5,6 +5,7 @@ import { fmtPrice, fmtRate, fmtWonShort, tone } from '../lib/format'
 import { go } from '../lib/router'
 import { track } from '../lib/analytics'
 import { useThemeNews } from '../lib/themeNews'
+import { MiniCross, crossPct, hasCross } from './ui'
 
 export const SORTS = [
   { id: 'value', label: '거래대금 집중' },
@@ -55,25 +56,6 @@ export function ThemeHeadline({ item, large, label, defaultOpen = false }) {
         </div>
       )}
     </div>
-  )
-}
-
-// 종목 오른쪽의 작은 십자: 세로선 = 고가~저가, 가로 몸통 = 시가~현재가, 가운데 줄 = 전일 종가
-const crossPct = (s) => {
-  const pct = (v) => ((v - s.prev_close) / s.prev_close) * 100
-  return { open: pct(s.open), now: pct(s.price), high: pct(Math.max(s.high, s.open, s.price)), low: pct(Math.min(s.low, s.open, s.price)) }
-}
-const hasCross = (s) => s.prev_close > 0 && s.open > 0 && s.high > 0 && s.low > 0   // 장 시작 전에는 시가가 없어 그리지 않음
-
-function MiniCross({ stock, range }) {
-  if (!hasCross(stock)) return null
-  const { open, now, high, low } = crossPct(stock)
-  const y = (p) => 50 - (p / range) * 50
-  return (
-    <span className={`ts-cross ${tone(stock.change_rate)}`} aria-hidden="true">
-      <i className="ts-wick" style={{ top: `${y(high)}%`, bottom: `${100 - y(low)}%` }} />
-      <i className="ts-candle" style={{ top: `${y(Math.max(open, now))}%`, bottom: `${100 - y(Math.min(open, now))}%` }} />
-    </span>
   )
 }
 
