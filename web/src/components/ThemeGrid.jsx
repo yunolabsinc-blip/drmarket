@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMarket } from '../lib/store'
 import { timeAgo } from './NewsList'
 import { fmtPrice, fmtRate, fmtWonShort, tone } from '../lib/format'
 import { go } from '../lib/router'
 import { track } from '../lib/analytics'
+import { getRanking } from '../lib/api'
 import { useThemeNews } from '../lib/themeNews'
 import { MiniCross, crossPct, hasCross } from './ui'
 
@@ -21,12 +22,13 @@ export const saveThemeView = (v) => { homeView = v; try { localStorage.setItem('
 
 // 정렬: 거래대금 집중 = 테마 소속 종목 당일 거래대금 합, 상승률 = 평균 등락률
 export function useSortedThemes(sort) {
-  const { themes, indices } = useMarket()
+  const { themes } = useMarket()
   const list = [...themes].sort((a, b) =>
     sort === 'rate' ? (b.avg ?? -999) - (a.avg ?? -999) : (b.value || 0) - (a.value || 0),
   )
-  // 비중 = 코스피+코스닥 전체 당일 거래대금 대비 (테마 간 중복 종목이 있어도 왜곡되지 않음)
-  const total = indices.reduce((s, i) => s + (i.trading_value || 0), 0)
+  // 비중 = 전 종목 당일 거래대금 합 대비 (종목 거래대금과 같은 KRX+NXT 통합 기준. 테마 간 중복 종목이 있어도 왜곡되지 않음)
+  const [total, setTotal] = useState(() => getRanking.peek('amount')?.total_value || 0)
+  useEffect(() => { getRanking('amount').then((d) => { if (d.total_value) setTotal(d.total_value) }).catch(() => {}) }, [])
   return { list, total, ready: themes.some((t) => t.avg !== null) }
 }
 

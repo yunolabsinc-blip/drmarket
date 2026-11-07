@@ -115,6 +115,7 @@ async def _sweep() -> dict | None:
     return {
         "at": time.time(),
         "count": len(rows),
+        "total_value": sum(r["trading_value"] for r in rows),   # 전 종목 통합(KRX+NXT) 거래대금 합 — 지수 거래대금은 KRX만이라 비중의 분모로 못 씀
         "amount": top(lambda r: r["trading_value"]),
         "volume": top(lambda r: r["volume"]),
         "up": top(lambda r: r["change_rate"], cond=lambda r: r["change_rate"] > 0),
@@ -166,6 +167,8 @@ async def get_ranking(kind: str, background=None) -> dict | None:
         if shared and (not data or shared["at"] > data["at"]):
             data = shared
             _local["data"] = data
+    if data and "total_value" not in data:
+        age = 0   # 합계가 없는 옛 결과는 바로 새로 계산
     if data and time.time() - data["at"] > age:
         if background is not None:
             background.add_task(refresh, age)
@@ -184,4 +187,4 @@ async def get_ranking(kind: str, background=None) -> dict | None:
                 _local["data"] = data
     if not data:
         return None
-    return {"ranking": data.get(kind, []), "count": data.get("count", 0), "at": data["at"]}
+    return {"ranking": data.get(kind, []), "count": data.get("count", 0), "total_value": data.get("total_value", 0), "at": data["at"]}
