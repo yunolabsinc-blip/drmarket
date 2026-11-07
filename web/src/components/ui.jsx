@@ -104,12 +104,17 @@ export function MiniCross({ stock, range }) {
   if (!hasCross(stock)) return <span className="ts-cross empty" aria-hidden="true" />
   const { open, now, high, low } = crossPct(stock)
   const r = range || Math.max(3, Math.abs(high), Math.abs(low))
-  const y = (p) => 50 - (p / r) * 50
+  const y = (p) => Math.round(18.5 - (p / r) * 16)   // 정수 픽셀로 맞춰야 작은 크기에서도 번지지 않음
+  let top = y(Math.max(open, now)), bottom = y(Math.min(open, now))
+  if (bottom - top < 4) { top = Math.min(33, Math.max(0, Math.round((top + bottom) / 2) - 2)); bottom = top + 4 }   // 몸통은 최소 4px
+  const hi = Math.min(y(high), top), lo = Math.max(y(low), bottom)
   return (
-    <span className={`ts-cross ${tone(stock.change_rate)}`} aria-hidden="true">
-      <i className="ts-wick" style={{ top: `${y(high)}%`, bottom: `${100 - y(low)}%` }} />
-      <i className="ts-candle" style={{ top: `${y(Math.max(open, now))}%`, bottom: `${100 - y(Math.min(open, now))}%` }} />
-    </span>
+    <svg className={`ts-cross ${tone(stock.change_rate)}`} viewBox="0 0 14 37" aria-hidden="true">
+      <rect className="ts-slot" width="14" height="37" rx="3" />
+      <rect className="ts-zero" y="18" width="14" height="1" />
+      <rect x="6" y={hi} width="2" height={lo - hi} fill="currentColor" />
+      <rect x="1" y={top} width="12" height={bottom - top} rx="1" fill="currentColor" />
+    </svg>
   )
 }
 

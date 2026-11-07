@@ -330,15 +330,10 @@ b { font-weight: 650; }
 .tile-stocks { list-style: none; }
 .tile-stock { width: 100%; display: flex; align-items: stretch; gap: 5px; padding: 7px 2px; border-radius: 8px; }
 .ts-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.ts-cross { flex: none; position: relative; width: 14px; }
-.ts-cross.empty::before { content: none; }
+.ts-cross { flex: none; align-self: center; width: 14px; height: 37px; }
 .tile-stock .ts-cross.empty { display: none; }
-.stock-row .ts-cross { align-self: stretch; width: 16px; }
-.search-item .ts-cross { align-self: center; width: 16px; height: 30px; }
-.ts-cross::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line-strong); }
-.ts-cross i { position: absolute; background: currentColor; }
-.ts-wick { left: 50%; width: 1.5px; margin-left: -.75px; }
-.ts-candle { left: 1px; right: 1px; min-height: 3px; transform: translateY(-1px); }
+.ts-slot { fill: var(--bg); }
+.ts-zero { fill: var(--line-strong); }
 .tile-stock:hover { background: #fafbfc; }
 .ts-top, .ts-bottom { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
 .ts-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
