@@ -11,6 +11,13 @@ export const SORTS = [
   { id: 'value', label: '거래대금 집중' },
   { id: 'rate', label: '상승률' },
 ]
+const VIEWS = [...SORTS, { id: 'map', label: '테마 지도' }]
+
+// 홈과 전체 테마가 고른 보기를 이어서 씀. 앱을 새로 열면 홈은 늘 거래대금 집중부터
+let homeView = 'value'
+export const getHomeView = () => homeView
+export const loadThemeView = () => { try { return localStorage.getItem('drm.themeSort') || 'value' } catch { return 'value' } }
+export const saveThemeView = (v) => { homeView = v; try { localStorage.setItem('drm.themeSort', v) } catch {} }
 
 // 정렬: 거래대금 집중 = 테마 소속 종목 당일 거래대금 합, 상승률 = 평균 등락률
 export function useSortedThemes(sort) {
@@ -26,7 +33,7 @@ export function useSortedThemes(sort) {
 export function SortToggle({ value, onChange }) {
   return (
     <div className="sort-toggle" role="tablist">
-      {SORTS.map((s) => (
+      {VIEWS.map((s) => (
         <button key={s.id} role="tab" aria-selected={value === s.id} className={value === s.id ? 'on' : ''}
           onClick={() => onChange(s.id)}>{s.label}</button>
       ))}

@@ -1,22 +1,25 @@
 import { useState } from 'react'
 import { useMarket } from '../lib/store'
-import ThemeGrid, { SortToggle, ThemeHeadline } from '../components/ThemeGrid'
+import ThemeGrid, { SortToggle, ThemeHeadline, loadThemeView, saveThemeView } from '../components/ThemeGrid'
+import ThemeMap from '../components/ThemeMap'
 import { useThemeNews } from '../lib/themeNews'
 import { fmtWonShort } from '../lib/format'
 import { Disclaimer, Empty, RatePill, StatusLine, StockRow, SubBar } from '../components/ui'
 
 export default function Themes() {
-  const [sort, setSort] = useState(() => { try { return localStorage.getItem('drm.themeSort') || 'value' } catch { return 'value' } })
-  const changeSort = (v) => { setSort(v); try { localStorage.setItem('drm.themeSort', v) } catch {} }
+  const [sort, setSort] = useState(loadThemeView)
+  const changeSort = (v) => { setSort(v); saveThemeView(v) }
   return (
     <main className="page">
       <h1 className="page-title">실시간 테마</h1>
-      <p className="page-desc">{sort === 'value'
-        ? '테마 소속 종목의 당일 거래대금 합계 순입니다. 돈이 몰리는 테마가 위에 옵니다.'
-        : '테마 소속 종목의 평균 등락률 순입니다.'}</p>
+      <p className="page-desc">{sort === 'map'
+        ? '원이 클수록 거래대금이 많고, 색이 진할수록 많이 움직인 테마입니다.'
+        : sort === 'value'
+          ? '테마 소속 종목의 당일 거래대금 합계 순입니다. 돈이 몰리는 테마가 위에 옵니다.'
+          : '테마 소속 종목의 평균 등락률 순입니다.'}</p>
       <StatusLine />
       <SortToggle value={sort} onChange={changeSort} />
-      <ThemeGrid sort={sort} />
+      {sort === 'map' ? <ThemeMap /> : <ThemeGrid sort={sort} />}
       <Disclaimer />
     </main>
   )

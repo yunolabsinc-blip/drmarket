@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import ThemeGrid, { SORTS } from '../components/ThemeGrid'
+import ThemeGrid, { SortToggle, getHomeView, saveThemeView } from '../components/ThemeGrid'
 import ThemeMap from '../components/ThemeMap'
 import { Headlines } from '../components/NewsList'
 import THEMES from '../data/themes.json'
@@ -60,20 +60,15 @@ function TopValue() {
 }
 
 export default function Home() {
-  // 거래대금 집중 · 상승률 · 테마 지도를 한 줄에서 고름 — 첫 화면은 늘 거래대금 집중
-  const [current, setCurrent] = useState('value')
-  const tabs = [...SORTS, { id: 'map', label: '테마 지도' }]
+  // 거래대금 집중 · 상승률 · 테마 지도를 한 줄에서 고름
+  const [current, setCurrent] = useState(getHomeView)
+  const changeView = (v) => { setCurrent(v); saveThemeView(v) }
   return (
     <main className="page">
       <StatusLine />
       <IndexCards />
       <Section title="실시간 테마" more={{ href: '#/themes', label: '전체 테마' }}>
-        <div className="sort-toggle" role="tablist">
-          {tabs.map((t) => (
-            <button key={t.id} role="tab" aria-selected={current === t.id} className={current === t.id ? 'on' : ''}
-              onClick={() => setCurrent(t.id)}>{t.label}</button>
-          ))}
-        </div>
+        <SortToggle value={current} onChange={changeView} />
         {current === 'map' ? <ThemeMap /> : <ThemeGrid sort={current} limit={6} />}
         <a className="btn wide" href="#/themes">전체 테마 보기 ({THEME_COUNT}개) →</a>
       </Section>
