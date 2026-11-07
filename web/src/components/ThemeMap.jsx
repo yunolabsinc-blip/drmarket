@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useMarket } from '../lib/store'
 import { fmtRate, fmtWonShort } from '../lib/format'
 import { go } from '../lib/router'
@@ -38,10 +38,13 @@ export default function ThemeMap() {
   const { themes } = useMarket()
   const box = useRef(null)
   const [width, setWidth] = useState(340)
-  useEffect(() => {
+  // 화면에 그리기 전에 너비를 재서 첫 배치부터 맞게 (기본값으로 그렸다가 다시 배치되면 원이 겹쳐 보임)
+  useLayoutEffect(() => {
     const el = box.current
     if (!el) return
-    const ro = new ResizeObserver(([e]) => setWidth(Math.round(e.contentRect.width / 20) * 20 || 340))
+    const fit = (w) => setWidth(Math.round(w / 20) * 20 || 340)
+    fit(el.clientWidth)
+    const ro = new ResizeObserver(([e]) => fit(e.contentRect.width))
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
