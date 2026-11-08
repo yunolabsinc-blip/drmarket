@@ -101,7 +101,7 @@ export const hasCross = (s) => s.prev_close > 0 && s.open > 0 && s.high > 0 && s
 
 // range를 주지 않으면 종목별 눈금 (작은 등락이 부풀어 보이지 않게 최소 ±3%). 값이 없을 때도 자리는 남겨 목록 숫자가 어긋나지 않게
 export function MiniCross({ stock, range }) {
-  if (!hasCross(stock)) return <span className="ts-cross empty" aria-hidden="true" />
+  if (!hasCross(stock)) return <span className="ts-cross ts-none" aria-hidden="true" />
   const { open, now, high, low } = crossPct(stock)
   const r = range || Math.max(3, Math.abs(high), Math.abs(low))
   const y = (p) => Math.round(18.5 - (p / r) * 16)   // 정수 픽셀로 맞춰야 작은 크기에서도 번지지 않음
