@@ -38,6 +38,20 @@ const loadHistory = () => {
 }
 const saveHistory = (list) => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)) } catch {} }
 
+// 종목 오른쪽: 현재가 위, 등락률 아래, 그 옆에 작은 십자
+function Quote({ quote }) {
+  if (!(quote?.price > 0)) return null
+  return (
+    <>
+      <span className="stock-nums">
+        <b className="price">{fmtPrice(quote.price)}</b>
+        <Rate value={quote.change_rate} />
+      </span>
+      <MiniCross stock={quote} />
+    </>
+  )
+}
+
 export default function Search({ onClose }) {
   const { stockList, themes, prices, watch } = useMarket()
   const [q, setQ] = useState('')
@@ -73,14 +87,17 @@ export default function Search({ onClose }) {
     }
   }, [q, stockList, themes])
 
-  // 검색 결과 종목의 시세를 받아 온다. 입력하는 동안에는 기다렸다가 멈추면 한 번만 조회
+  // 검색 결과(입력 전에는 최근 검색) 종목의 시세를 받아 온다. 입력하는 동안에는 기다렸다가 멈추면 한 번만 조회
+  const shownCodes = useMemo(
+    () => (q ? results.stocks.map((s) => s.code) : history.filter((h) => h.code).map((h) => h.code)),
+    [q, results.stocks, history])
   useEffect(() => {
-    const codes = results.stocks.map((s) => s.code)
+    const codes = shownCodes
     if (!codes.length) return
     let offs = []
     const t = setTimeout(() => { offs = codes.map((c) => watch(c)) }, 250)
     return () => { clearTimeout(t); offs.forEach((off) => off()) }
-  }, [results.stocks, watch])
+  }, [shownCodes, watch])
 
   const open = (path, item) => {
     if (item) remember({ ...item, path })
@@ -108,8 +125,7 @@ export default function Search({ onClose }) {
                 <button className="search-history-open" onClick={() => open(h.path, h)}>
                   <b>{h.name}</b>
                   <span className="muted">{h.sub}</span>
-                  {h.code && prices[h.code] && <Rate value={prices[h.code].change_rate} />}
-                  {h.code && prices[h.code] && <MiniCross stock={prices[h.code]} />}
+                  {h.code && <Quote quote={prices[h.code]} />}
                 </button>
                 <button className="icon-btn search-history-del" aria-label={`${h.name} 검색 기록 삭제`}
                   onClick={() => updateHistory(history.filter((x) => x.path !== h.path))}><CloseIcon /></button>
@@ -136,13 +152,7 @@ export default function Search({ onClose }) {
               <button key={s.code} className="search-item" data-stock={s.code} onClick={() => open(`/stock/${s.code}`, { name: s.name, code: s.code, sub: `${s.market === 'P' ? '코스피' : '코스닥'} ${s.code}` })}>
                 <b>{s.name}</b>
                 <span className="muted">{s.market === 'P' ? '코스피' : '코스닥'} {s.code}</span>
-                {prices[s.code]?.price > 0 && (
-                  <span className="stock-nums">
-                    <b className="price">{fmtPrice(prices[s.code].price)}</b>
-                    <Rate value={prices[s.code].change_rate} />
-                  </span>
-                )}
-                {prices[s.code] && <MiniCross stock={prices[s.code]} />}
+                <Quote quote={prices[s.code]} />
               </button>
             ))}
           </>
