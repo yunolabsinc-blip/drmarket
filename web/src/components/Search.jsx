@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMarket } from '../lib/store'
 import { go } from '../lib/router'
+import { fmtPrice } from '../lib/format'
 import { CloseIcon, MiniCross, Rate, SearchIcon } from './ui'
 
 const norm = (s) => s.toLowerCase().replace(/\s/g, '')
@@ -38,7 +39,7 @@ const loadHistory = () => {
 const saveHistory = (list) => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)) } catch {} }
 
 export default function Search({ onClose }) {
-  const { stockList, themes, prices } = useMarket()
+  const { stockList, themes, prices, watch } = useMarket()
   const [q, setQ] = useState('')
   const [history, setHistory] = useState(loadHistory)
   const updateHistory = (list) => { setHistory(list); saveHistory(list) }
@@ -71,6 +72,15 @@ export default function Search({ onClose }) {
       themes: themes.filter((t) => match(norm(t.name), k) >= 0 || norm(t.desc).includes(k)).slice(0, 5),
     }
   }, [q, stockList, themes])
+
+  // 검색 결과 종목의 시세를 받아 온다. 입력하는 동안에는 기다렸다가 멈추면 한 번만 조회
+  useEffect(() => {
+    const codes = results.stocks.map((s) => s.code)
+    if (!codes.length) return
+    let offs = []
+    const t = setTimeout(() => { offs = codes.map((c) => watch(c)) }, 250)
+    return () => { clearTimeout(t); offs.forEach((off) => off()) }
+  }, [results.stocks, watch])
 
   const open = (path, item) => {
     if (item) remember({ ...item, path })
@@ -126,7 +136,12 @@ export default function Search({ onClose }) {
               <button key={s.code} className="search-item" data-stock={s.code} onClick={() => open(`/stock/${s.code}`, { name: s.name, code: s.code, sub: `${s.market === 'P' ? '코스피' : '코스닥'} ${s.code}` })}>
                 <b>{s.name}</b>
                 <span className="muted">{s.market === 'P' ? '코스피' : '코스닥'} {s.code}</span>
-                {prices[s.code] && <Rate value={prices[s.code].change_rate} />}
+                {prices[s.code]?.price > 0 && (
+                  <span className="stock-nums">
+                    <b className="price">{fmtPrice(prices[s.code].price)}</b>
+                    <Rate value={prices[s.code].change_rate} />
+                  </span>
+                )}
                 {prices[s.code] && <MiniCross stock={prices[s.code]} />}
               </button>
             ))}
