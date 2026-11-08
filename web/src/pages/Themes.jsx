@@ -43,6 +43,7 @@ export function ThemeDetail({ id }) {
       <main className="page">
         <div className="hero">
           <span className="hero-label">{theme.desc}</span>
+          <h1 className="stock-title">{theme.name}</h1>
           <ThemeHeadline item={themeNews[theme.id]} large />
           <div className="hero-row">
             <RatePill value={theme.avg} />

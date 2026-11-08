@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { MarketProvider } from './lib/store'
 import { useRoute } from './lib/router'
-import { TabBar, TopBar } from './components/ui'
+import { SearchContext, TabBar, TopBar } from './components/ui'
 import Search from './components/Search'
 import Menu from './components/Menu'
 import NewsTicker from './components/NewsTicker'
@@ -54,8 +54,9 @@ export default function App() {
 
   return (
     <MarketProvider>
+      <SearchContext.Provider value={openSearch}>
       <div className="app">
-        {!isSub && <TopBar onSearch={openSearch} onMenu={() => setMenuOpen(true)} />}
+        {!isSub && <TopBar onMenu={() => setMenuOpen(true)} />}
         <Screen key={route.page === 'market' ? `market/${route.param || ''}` : route.page} route={route} openSearch={openSearch} />
         <NewsTicker hidden={(route.page === 'market' && route.param === 'news') || route.page === 'admin'} />
         <TabBar page={route.page} param={route.param} />
@@ -66,6 +67,7 @@ export default function App() {
         {feedbackOpen && <Feedback page={route.page === 'market' && route.param ? `market/${route.param}` : route.page} onClose={() => setFeedbackOpen(false)} />}
         {install.mode && <InstallGuide mode={install.mode} onClose={install.close} />}
       </div>
+      </SearchContext.Provider>
     </MarketProvider>
   )
 }

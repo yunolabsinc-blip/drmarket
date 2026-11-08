@@ -1,23 +1,34 @@
-import { useEffect } from 'react'
+import { createContext, useContext, useEffect } from 'react'
 import { useMarket } from '../lib/store'
 import { fmtPrice, fmtRate, fmtTime, marketPhase, tone } from '../lib/format'
 import { back, go } from '../lib/router'
 import { LogoMark } from './Logo'
 
-export function TopBar({ onSearch, onMenu }) {
+// 어느 화면에서든 상단 검색창을 누르면 검색을 연다 (App 이 여는 함수를 넣어 줌)
+export const SearchContext = createContext(() => {})
+
+function SearchTrigger() {
+  const openSearch = useContext(SearchContext)
+  return (
+    <button className="search-trigger" onClick={openSearch} aria-label="종목·테마 검색">
+      <SearchIcon />
+      <span className="st-long">종목명, 종목코드, 테마 검색</span><span className="st-short">종목·테마 검색</span>
+    </button>
+  )
+}
+
+export function TopBar({ onMenu }) {
   return (
     <header className="topbar main">
       <a href="#/" className="topbar-logo" aria-label="닥터마켓 홈"><LogoMark size={28} /><span className="logo-text topbar-word">닥터마켓</span></a>
-      <button className="search-trigger" onClick={onSearch} aria-label="종목·테마 검색">
-        <SearchIcon />
-        <span className="st-long">종목명, 종목코드, 테마 검색</span><span className="st-short">종목·테마 검색</span>
-      </button>
+      <SearchTrigger />
       <button className="icon-btn" onClick={onMenu} aria-label="메뉴"><MenuIcon /></button>
     </header>
   )
 }
 
-export function SubBar({ title, right }) {
+// 상세 화면 상단: 뒤로 · 검색창 · (오른쪽 버튼). 화면 제목은 본문 첫 줄에 둔다
+export function SubBar({ right }) {
   // ESC로 상세 화면 닫기 (입력 중일 때는 제외)
   useEffect(() => {
     const onKey = (e) => {
@@ -34,8 +45,8 @@ export function SubBar({ title, right }) {
   return (
     <header className="topbar sub">
       <button className="icon-btn" onClick={back} aria-label="뒤로"><BackIcon /></button>
-      <h1 className="topbar-title">{title}</h1>
-      <div className="topbar-right">{right}</div>
+      <SearchTrigger />
+      {right}
     </header>
   )
 }

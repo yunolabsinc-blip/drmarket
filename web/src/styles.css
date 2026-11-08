@@ -50,9 +50,7 @@ b { font-weight: 650; }
   backdrop-filter: saturate(180%) blur(14px);
   -webkit-backdrop-filter: saturate(180%) blur(14px);
 }
-.topbar.sub { padding: 0 8px; }
-.topbar-title { font-size: 17px; font-weight: 650; flex: 1; text-align: center; }
-.topbar-right { min-width: 44px; display: flex; justify-content: flex-end; }
+.topbar.sub { gap: 6px; padding: 0 8px 0 4px; height: 60px; }
 .logo { display: inline-flex; align-items: center; gap: 8px; }
 .logo-text { font-size: 19px; font-weight: 750; letter-spacing: -0.03em; }
 .icon-btn {

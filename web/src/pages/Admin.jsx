@@ -49,6 +49,7 @@ export default function Admin() {
     <>
       <SubBar title="관리자 · 사용 통계" />
       <main className="page admin">
+        <h1 className="page-title">관리자 · 사용 통계</h1>
         {!key ? (
           <div className="card admin-login">
             <p>관리자 비밀번호(숫자 6자리)를 입력하세요. 이 기기에만 저장됩니다.</p>
