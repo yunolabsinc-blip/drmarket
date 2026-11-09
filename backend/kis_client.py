@@ -1093,7 +1093,7 @@ _past_locks: dict[str, asyncio.Lock] = {}
 
 async def _past_day_minutes(code: str, date: str, mkt: str) -> list[dict]:
     """date(YYYYMMDD) 하루치 1분봉. 지난 날은 바뀌지 않으므로 받은 것은 공유 저장소에 10일 보관"""
-    rkey = f"drmarket:mpast:{code}:{date}"
+    rkey = f"drmarket:mpast2:{code}:{date}"
     mem = _cache_get(rkey, 86400)
     if mem is not None:
         return mem
@@ -1106,11 +1106,11 @@ async def _past_day_minutes(code: str, date: str, mkt: str) -> list[dict]:
         except Exception:
             pass
     day_start, day_end = ("080000", "200000") if mkt != "J" else ("090000", "153000")
-    # 1회 최대 120개(2시간) → 끝 시각을 2시간씩 당겨 하루를 덮는다
+    # 1회 최대 120개(2시간)지만 응답이 덜 오는 구간이 있어, 1시간씩만 당겨 앞뒤 구간이 겹치게 받는다
     ends, t = [], datetime.strptime(day_end, "%H%M%S")
     while True:
         ends.append(t.strftime("%H%M%S"))
-        t -= timedelta(minutes=120)
+        t -= timedelta(minutes=60)
         if t.strftime("%H%M%S") < day_start:
             break
 
@@ -1128,7 +1128,8 @@ async def _past_day_minutes(code: str, date: str, mkt: str) -> list[dict]:
         return []
 
     seen: dict[str, dict] = {}
-    for out in await asyncio.gather(*[window(e) for e in ends]):
+    results = await asyncio.gather(*[window(e) for e in ends])
+    for out in results:
         for o in out:
             h = o["stck_cntg_hour"]
             if o.get("stck_bsop_date") != date or not day_start <= h <= day_end:
@@ -1143,7 +1144,7 @@ async def _past_day_minutes(code: str, date: str, mkt: str) -> list[dict]:
     # 넥스트레이드에 없는 종목은 통합 분봉이 거래량 0으로 오므로 거래소 분봉으로
     if mkt != "J" and rows and not any(r["v"] for r in rows if "09:30" <= r["t"][-5:] <= "15:00"):
         return await _past_day_minutes(code, date, "J")
-    if len(rows) >= 30:   # 거의 빈 응답(조회 실패)은 저장하지 않고 다음에 다시
+    if len(rows) >= 30 and all(results):   # 빈 구간이 있으면 저장하지 않고 다음에 다시
         _cache_set(rkey, rows)
         await _redis("SET", rkey, json.dumps(rows, separators=(",", ":")), "EX", str(10 * 86400))
     return rows
