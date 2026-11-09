@@ -146,6 +146,23 @@ _CDN_LONG = {"/news": (120, 1800), "/events": (600, 86400), "/limit-ups": (3600,
 _CDN_SKIP = ("/orderbook", "/chart")
 
 
+# 시세 이용 계약 전까지 사이트 비밀번호를 넣은 사람만 응답 (코스콤: 증권사 API 시세의 외부 표출 금지)
+# 앱은 비밀번호로 만든 접속 키를 주소 끝(?k=)에 붙여 보낸다. 주소에 붙여야 CDN 저장분도 키별로 나뉜다
+_GATE_HASH = "da7e11ba92ccaabab239516146b07dd28432664c1c3744aae17a36bd41c7e335"   # sha256(접속 키)
+_GATE_OPEN = ("/api/stats", "/api/feedback", "/api/admin/", "/api/market/calendar")   # 통계·의견·관리자(자체 키)·일정(시세 아님, 매일 예약 호출)은 그대로
+
+
+@app.middleware("http")
+async def access_gate(request: Request, call_next):
+    path = request.url.path
+    if request.method != "OPTIONS" and path.startswith("/api/") and not path.startswith(_GATE_OPEN):
+        k = request.query_params.get("k", "")
+        if hashlib.sha256(k.encode()).hexdigest() != _GATE_HASH:
+            return JSONResponse({"detail": "접속 권한이 없습니다."}, status_code=403,
+                                headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"})
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def cdn_cache(request: Request, call_next):
     response = await call_next(request)

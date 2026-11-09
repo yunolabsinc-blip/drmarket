@@ -33,11 +33,15 @@ function remember(path, data) {
 // 경로를 만드는 함수 → 조회 함수 + .peek(마지막 응답)
 const endpoint = (build, opts) => Object.assign((...a) => api(build(...a), opts), { peek: (...a) => peek(build(...a)) })
 
+// 사이트 비밀번호로 만든 접속 키 (Gate가 저장). 서버는 이 키가 없으면 응답하지 않는다
+export const GATE_KEY = 'drm.gate2'
+const gateToken = () => { try { return localStorage.getItem(GATE_KEY) || '' } catch { return '' } }
+
 export async function api(path, { timeout = 20000 } = {}) {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeout)
   try {
-    const res = await fetch(API_BASE + path, { signal: ctrl.signal })
+    const res = await fetch(`${API_BASE}${path}${path.includes('?') ? '&' : '?'}k=${gateToken()}`, { signal: ctrl.signal })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     remember(path, data)
