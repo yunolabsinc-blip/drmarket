@@ -204,6 +204,7 @@ export function GlobeIcon() { return <I><circle cx="12" cy="12" r="9" /><path d=
 export function SearchIcon() { return <I><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></I> }
 export function BackIcon() { return <I><path d="m15 18-6-6 6-6" /></I> }
 export function ChevronIcon() { return <I size={16}><path d="m9 18 6-6-6-6" /></I> }
+export function ExternalIcon() { return <I size={16}><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></I> }
 export function CloseIcon() { return <I><path d="M18 6 6 18M6 6l12 12" /></I> }
 export function HomeIcon() { return <I><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" /></I> }
 export function GridIcon() { return <I><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></I> }

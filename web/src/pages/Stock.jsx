@@ -5,7 +5,7 @@ import { fmtChange, fmtIndex, fmtPrice, fmtRate, fmtVolume, fmtWonShort, isMarke
 import { go } from '../lib/router'
 import Chart from '../components/Chart'
 import OrderBook, { prefetchOrderbook } from '../components/OrderBook'
-import { Disclaimer, Empty, Rate, StarIcon, SubBar } from '../components/ui'
+import { Disclaimer, Empty, ExternalIcon, Rate, StarIcon, SubBar } from '../components/ui'
 import { NewsItems } from '../components/NewsList'
 import { EventRows } from '../components/Calendar'
 import { track } from '../lib/analytics'
@@ -298,6 +298,11 @@ export default function Stock({ code }) {
               value={limits === null ? '…' : limits.down_count === null ? '-' : `${limits.down_count}회`} />
           </div>
         )}
+        {/* 링크만 건다. 게시판 글을 가져와 보여 주지 않음 */}
+        <a className="card ext-link" href={`https://m.stock.naver.com/domestic/stock/${code}/discussion`}
+          target="_blank" rel="noopener noreferrer">
+          <b>네이버 종목토론방</b><span className="muted">외부 사이트</span><ExternalIcon />
+        </a>
 
         {limits?.up_count > 0 && (
           <section className="section">
