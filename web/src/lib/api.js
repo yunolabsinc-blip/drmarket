@@ -34,7 +34,7 @@ function remember(path, data) {
 const endpoint = (build, opts) => Object.assign((...a) => api(build(...a), opts), { peek: (...a) => peek(build(...a)) })
 
 // 사이트 비밀번호로 만든 접속 키 (Gate가 저장). 서버는 이 키가 없으면 응답하지 않는다
-export const GATE_KEY = 'drm.gate2'
+export const GATE_KEY = 'drm.gate3'
 const gateToken = () => { try { return localStorage.getItem(GATE_KEY) || '' } catch { return '' } }
 
 export async function api(path, { timeout = 20000 } = {}) {

@@ -5,7 +5,7 @@ import { GATE_KEY } from '../lib/api'
 // 시세 이용 계약 전까지 사이트를 비밀번호로 막아 둔다 (코스콤: 증권사 API 시세의 외부 화면 표출 금지)
 // 비밀번호로 접속 키를 만들어 이 기기에 저장(다음부터는 묻지 않음). 서버도 같은 키로 확인한다
 // 코드에는 비밀번호·키 대신 키의 해시만 둔다
-const HASH = 'da7e11ba92ccaabab239516146b07dd28432664c1c3744aae17a36bd41c7e335'   // sha256(접속 키), 서버 main.py 와 같음
+const HASH = '50843e2dec5ec262b2e4a87247f220a006e12ae27de01d92ea9b1bf6b7376aa9'   // sha256(접속 키), 서버 main.py 와 같음
 
 async function sha256(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))

@@ -148,7 +148,7 @@ _CDN_SKIP = ("/orderbook", "/chart")
 
 # 시세 이용 계약 전까지 사이트 비밀번호를 넣은 사람만 응답 (코스콤: 증권사 API 시세의 외부 표출 금지)
 # 앱은 비밀번호로 만든 접속 키를 주소 끝(?k=)에 붙여 보낸다. 주소에 붙여야 CDN 저장분도 키별로 나뉜다
-_GATE_HASH = "da7e11ba92ccaabab239516146b07dd28432664c1c3744aae17a36bd41c7e335"   # sha256(접속 키)
+_GATE_HASH = "50843e2dec5ec262b2e4a87247f220a006e12ae27de01d92ea9b1bf6b7376aa9"   # sha256(접속 키)
 _GATE_OPEN = ("/api/stats", "/api/feedback", "/api/admin/", "/api/market/calendar")   # 통계·의견·관리자(자체 키)·일정(시세 아님, 매일 예약 호출)은 그대로
 
 
