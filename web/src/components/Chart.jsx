@@ -11,9 +11,13 @@ const MAS = [
 const PAD = { top: 10, right: 58, bottom: 20, left: 6 }
 const VOL_H = 46
 
+// 분봉의 날짜: 지난 날 분봉은 "11/06 09:00", 오늘 분봉은 "09:00"(날짜 없음 → '')
+const dayOf = (t) => (t.length > 5 && t[2] === '/' ? t.slice(0, 5) : '')
+
 const fmtNum = (v) => (v >= 1e8 ? `${(v / 1e8).toFixed(1)}억` : v >= 1e4 ? `${Math.round(v / 1e4).toLocaleString()}만` : v.toLocaleString())
 
-export default function Chart({ candles, baseline, height = 300, format = (v) => v.toLocaleString(), initialCount = 80, resetKey, current }) {
+// dayLabel: 날짜 없는(오늘) 분봉 묶음에 붙일 날짜. 지난 날 분봉이 앞에 이어질 때 날짜 경계에 표시
+export default function Chart({ candles, baseline: base0, height = 300, format = (v) => v.toLocaleString(), initialCount = 80, resetKey, current, dayLabel }) {
   const wrap = useRef(null)
   const [width, setWidth] = useState(340)
   const [view, setView] = useState({ count: initialCount, end: candles?.length || 0 })
@@ -147,7 +151,8 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
     const before = prevLen.current
     prevLen.current = len
     if (!before) { setView({ count: Math.min(initialCount, len) || len, end: len }); return }
-    setView((v) => (v.end >= before ? { ...v, end: len } : v))
+    // 봉이 적어 전부 보여 주던 중에 앞쪽(지난 날 분봉)이 붙으면 기본 개수까지 넓혀 보여 줌
+    setView((v) => (v.end >= before ? { count: v.count >= before ? Math.max(v.count, Math.min(initialCount, len)) : v.count, end: len } : v))
   }, [len])
 
   // 이동평균 (전체 데이터 기준으로 계산해야 화면 왼쪽 끝도 정확)
@@ -169,6 +174,8 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
   const end = Math.max(count, Math.min(view.end, len))
   const start = end - count
   const visible = useMemo(() => (candles ? candles.slice(start, end) : []), [candles, start, end])
+  // 전일 종가 기준선은 오늘 분봉이 화면에 있을 때만 (지난 날만 보고 있으면 의미가 없어 가격 범위만 넓힘)
+  const baseline = base0 > 0 && visible.some((d) => !dayOf(d.t)) ? base0 : undefined
 
   const geo = useMemo(() => {
     if (!visible.length) return null
@@ -309,9 +316,27 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
   for (let i = start; i < end; i++) { if (candles[i].h > candles[hiIdx].h) hiIdx = i; if (candles[i].l < candles[loIdx].l) loIdx = i }
   const last = candles[len - 1]
   const c = cross != null ? candles[cross] : null
-  const prevC = cross != null && cross > 0 ? candles[cross - 1].c : baseline || null
+  const prevC = cross != null && cross > 0 ? candles[cross - 1].c : base0 || null
   // 분봉(전일 종가 기준선이 있는 당일 차트)은 MTS처럼 전일 종가 대비 등락률, 일·주·월봉은 직전 봉 대비
-  const refC = baseline > 0 ? baseline : prevC
+  // 지난 날 분봉은 그 전날 마지막 봉 종가 대비
+  let refC = prevC
+  if (c && base0 > 0) {
+    const day = dayOf(c.t)
+    if (!day) refC = base0
+    else {
+      let j = cross
+      while (j > 0 && dayOf(candles[j - 1].t) === day) j--
+      refC = j > 0 ? candles[j - 1].c : null
+    }
+  }
+  // 날짜가 바뀌는 봉 (분봉에서 지난 날과 이어 볼 때 경계선)
+  const dayStarts = []
+  if (base0 !== undefined || candles.some((d) => dayOf(d.t))) {
+    for (let i = Math.max(1, start); i < end; i++) {
+      const day = dayOf(candles[i].t)
+      if (day !== dayOf(candles[i - 1].t)) dayStarts.push([i, day || dayLabel || '오늘'])
+    }
+  }
   // a → b 변화율 문자열 (+12.34%)
   const pct = (b, a) => (a ? `${b >= a ? '+' : ''}${(((b - a) / a) * 100).toFixed(2)}%` : '')
   const tone = (b, a) => (b > a ? 'up' : b < a ? 'down' : '')
@@ -338,9 +363,15 @@ export default function Chart({ candles, baseline, height = 300, format = (v) =>
             </text>
           </>
         )}
+        {dayStarts.map(([i, label]) => (
+          <g key={i}>
+            <line x1={x(i) - step / 2} x2={x(i) - step / 2} y1={PAD.top} y2={volTop + VOL_H} stroke="var(--line-strong)" strokeDasharray="3 3" />
+            <text x={x(i) - step / 2 + 3} y={volTop - 4} className="chart-day">{label}</text>
+          </g>
+        ))}
         {dateIdx.map((i, k) => (
           <text key={k} x={x(i)} y={height - 5} textAnchor={k === 0 ? 'start' : k === 3 ? 'end' : 'middle'} className="chart-axis">
-            {candles[i].t.length > 8 ? candles[i].t.slice(2) : candles[i].t}
+            {/^\d{4}-/.test(candles[i].t) ? candles[i].t.slice(2) : candles[i].t}
           </text>
         ))}
         {c && (

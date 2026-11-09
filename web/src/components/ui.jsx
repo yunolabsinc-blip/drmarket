@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { useMarket } from '../lib/store'
 import { fmtPrice, fmtRate, fmtTime, marketPhase, tone } from '../lib/format'
 import { back, go } from '../lib/router'
@@ -51,11 +51,21 @@ export function SubBar({ right }) {
   )
 }
 
+// 1초마다 가는 시계. 장중에 시세가 20초 넘게 안 들어오면 몇 초 전 시세인지 함께 보여 줌
 export function StatusLine() {
   const { status, updatedAt, refresh } = useMarket()
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    let t
+    const tick = () => { setNow(new Date()); t = setTimeout(tick, 1000 - (Date.now() % 1000)) }   // 초가 바뀌는 순간에 맞춤
+    tick()
+    return () => clearTimeout(t)
+  }, [])
   const phase = marketPhase()
+  const age = updatedAt ? Math.floor((now - updatedAt) / 1000) : 0
+  const stale = phase.key === 'open' && age >= 20 ? ` · ${age < 60 ? `${age}초` : `${Math.floor(age / 60)}분`} 전 시세` : ''
   const label = {
-    live: updatedAt ? `${fmtTime(updatedAt)} 기준` : '불러오는 중',
+    live: updatedAt ? `${fmtTime(now)}${stale}` : '불러오는 중',
     connecting: '연결 중',
     error: '시세 서버 연결이 원활하지 않습니다',
     demo: '시세 서버 점검 중',

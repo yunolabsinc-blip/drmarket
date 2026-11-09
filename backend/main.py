@@ -362,6 +362,16 @@ def _market_open() -> bool:
     return ranking._max_age() < 600   # 평일 08:00~20:00
 
 
+@app.get("/api/stock/{code}/chart/past", summary="종목 지난 거래일 분봉")
+async def get_stock_chart_past(code: str, period: str = Query("1m", description="1m/3m/5m/10m/30m/60m")):
+    n = int(period[:-1]) if period.endswith("m") and period[:-1].isdigit() else 0
+    if n not in (1, 3, 5, 10, 30, 60):
+        raise HTTPException(400, "분봉은 1, 3, 5, 10, 30, 60분만 지원합니다.")
+    past = await kis.fetch_minute_past(code)
+    body = {"period": period, "session": past["session"], "candles": kis.aggregate_minutes(past["rows"], n)}
+    return _cdn(body, 300, 3600) if past["rows"] else JSONResponse(body, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/api/stock/{code}/chart", summary="종목 차트")
 async def get_stock_chart(background: BackgroundTasks, code: str,
                           period: str = Query("D", description="1m/3m/5m/10m/30m/60m (당일 분봉) · D/W/M/Y (일/주/월/년봉)"),

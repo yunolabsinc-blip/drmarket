@@ -919,13 +919,14 @@ async def fetch_daily_chart(code: str, period: str = "D", is_index: bool = False
 
 
 def aggregate_minutes(rows: list[dict], n: int) -> list[dict]:
-    """1분봉 → n분봉 (장 시작 시각 기준으로 n분 단위 묶음)"""
+    """1분봉 → n분봉 (장 시작 시각 기준으로 n분 단위 묶음). 지난 날 분봉은 t 앞에 날짜가 붙는다("11/06 09:00")"""
     if n <= 1 or not rows:
         return rows
     out: list[dict] = []
     for r in rows:
-        hh, mm = int(r["t"][:2]), int(r["t"][3:5])
-        bucket = (hh * 60 + mm) // n
+        day, hm = r["t"][:-5], r["t"][-5:]
+        hh, mm = int(hm[:2]), int(hm[3:5])
+        bucket = (day, (hh * 60 + mm) // n)
         if out and out[-1]["_b"] == bucket:
             cur = out[-1]
             cur["h"] = max(cur["h"], r["h"])
@@ -933,8 +934,8 @@ def aggregate_minutes(rows: list[dict], n: int) -> list[dict]:
             cur["c"] = r["c"]
             cur["v"] += r["v"]
         else:
-            start = bucket * n
-            out.append({"_b": bucket, "t": f"{start // 60:02d}:{start % 60:02d}", **{k: r[k] for k in ("o", "h", "l", "c", "v")}})
+            start = bucket[1] * n
+            out.append({"_b": bucket, "t": f"{day}{start // 60:02d}:{start % 60:02d}", **{k: r[k] for k in ("o", "h", "l", "c", "v")}})
     for r in out:
         del r["_b"]
     return out
@@ -1081,6 +1082,99 @@ async def _fetch_minute(code: str, key: str, quick: bool, mkt: str | None = None
             _cache_set(f"minute_put:{code}", True)
             await _redis("SET", rkey, json.dumps(state, separators=(",", ":")), "EX", "86400")
     return rows
+
+
+# ──────────────────────────────────────────────
+# 지난 거래일 분봉 (차트에서 오늘 분봉 앞에 이어 붙임)
+# ──────────────────────────────────────────────
+PAST_MINUTE_DAYS = 5   # 오늘을 뺀 최근 거래일 수
+_past_locks: dict[str, asyncio.Lock] = {}
+
+
+async def _past_day_minutes(code: str, date: str, mkt: str) -> list[dict]:
+    """date(YYYYMMDD) 하루치 1분봉. 지난 날은 바뀌지 않으므로 받은 것은 공유 저장소에 10일 보관"""
+    rkey = f"drmarket:mpast:{code}:{date}"
+    mem = _cache_get(rkey, 86400)
+    if mem is not None:
+        return mem
+    raw = await _redis("GET", rkey)
+    if raw:
+        try:
+            rows = json.loads(raw)
+            _cache_set(rkey, rows)
+            return rows
+        except Exception:
+            pass
+    day_start, day_end = ("080000", "200000") if mkt != "J" else ("090000", "153000")
+    # 1회 최대 120개(2시간) → 끝 시각을 2시간씩 당겨 하루를 덮는다
+    ends, t = [], datetime.strptime(day_end, "%H%M%S")
+    while True:
+        ends.append(t.strftime("%H%M%S"))
+        t -= timedelta(minutes=120)
+        if t.strftime("%H%M%S") < day_start:
+            break
+
+    async def window(end_hour: str):
+        for _ in range(2):
+            data = await _get(
+                "/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice",
+                {"FID_COND_MRKT_DIV_CODE": mkt, "FID_INPUT_ISCD": code, "FID_INPUT_HOUR_1": end_hour,
+                 "FID_INPUT_DATE_1": date, "FID_PW_DATA_INCU_YN": "N", "FID_FAKE_TICK_INCU_YN": ""},
+                "FHKST03010230",
+            )
+            out = [o for o in ((data or {}).get("output2", []) or []) if o.get("stck_cntg_hour")]
+            if out:
+                return out
+        return []
+
+    seen: dict[str, dict] = {}
+    for out in await asyncio.gather(*[window(e) for e in ends]):
+        for o in out:
+            h = o["stck_cntg_hour"]
+            if o.get("stck_bsop_date") != date or not day_start <= h <= day_end:
+                continue
+            seen[h] = {
+                "t": f"{date[4:6]}/{date[6:]} {h[:2]}:{h[2:4]}",
+                "o": _num(o.get("stck_oprc")), "h": _num(o.get("stck_hgpr")),
+                "l": _num(o.get("stck_lwpr")), "c": _num(o.get("stck_prpr")),
+                "v": _num(o.get("cntg_vol"), int),
+            }
+    rows = [seen[k] for k in sorted(seen)]
+    # 넥스트레이드에 없는 종목은 통합 분봉이 거래량 0으로 오므로 거래소 분봉으로
+    if mkt != "J" and rows and not any(r["v"] for r in rows if "09:30" <= r["t"][-5:] <= "15:00"):
+        return await _past_day_minutes(code, date, "J")
+    if len(rows) >= 30:   # 거의 빈 응답(조회 실패)은 저장하지 않고 다음에 다시
+        _cache_set(rkey, rows)
+        await _redis("SET", rkey, json.dumps(rows, separators=(",", ":")), "EX", str(10 * 86400))
+    return rows
+
+
+async def fetch_minute_past(code: str, days: int = PAST_MINUTE_DAYS) -> dict:
+    """오늘(지금 차트에 나오는 거래일)을 뺀 최근 거래일들의 1분봉. {"session": 오늘 분봉의 날짜 "MM/DD", "rows": [...]}"""
+    key = f"minute_past:{code}:{days}"
+    cached = _cache_get(key, 600)
+    if cached:
+        return cached
+    lock = _past_locks.setdefault(code, asyncio.Lock())
+    async with lock:
+        cached = _cache_get(key, 600)
+        if cached:
+            return cached
+        now = datetime.utcnow() + timedelta(hours=9)
+        today = now.strftime("%Y-%m-%d")
+        dates = [c["t"] for c in await fetch_daily_chart(code, "D", pages=1)]
+        if not dates:
+            return {"session": "", "rows": []}
+        # 오늘 분봉이 나오는 거래일: 오늘 일봉이 있거나 평일 장 시작(08:00) 뒤면 오늘, 아니면 마지막 거래일
+        session = today if dates[-1] == today or (now.weekday() < 5 and now.strftime("%H%M") >= "0800") else dates[-1]
+        past = [d.replace("-", "") for d in dates if d < session][-days:]
+        rows: list[dict] = []
+        for d in past:   # 하루씩 (한 번에 몰아 보내면 다른 사람 요청이 밀림)
+            rows += await _past_day_minutes(code, d, KIS_MARKET)
+        body = {"session": f"{session[5:7]}/{session[8:]}", "rows": rows}
+        if rows:
+            _cache_set(key, body)
+        return body
 
 
 async def fetch_orderbook(code: str) -> dict | None:

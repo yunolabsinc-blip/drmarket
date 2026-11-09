@@ -57,6 +57,8 @@ export const getOrderbook = (code) => api(`/api/stock/${code}/orderbook`, { time
 export const getMarketOverview = endpoint(() => '/api/market/overview', { timeout: 30000 })
 export const getMarketGlobal = () => api('/api/market/global', { timeout: 8000 })   // 해외 지수·야간선물만 (빠른 갱신)
 export const getDetail = endpoint((code) => `/api/stock/${code}/detail`)
+// 지난 거래일 분봉 (오늘 분봉 앞에 이어 그림). 하루에 한 번만 바뀌어 화면을 열 때 한 번 받는다
+export const getStockChartPast = (code, period) => api(`/api/stock/${code}/chart/past?period=${period}`, { timeout: 30000 })
 export const getStockChart = (code, period, quick) => api(`/api/stock/${code}/chart?period=${period}${quick ? '&quick=1' : ''}`, { timeout: 30000 })
 export const getIndexChart = endpoint((code, period) => `/api/index/${code}/chart?period=${period}`)
 export const getWorldChart = endpoint((code, period) => `/api/world/${encodeURIComponent(code)}/chart?period=${period}`)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { themesOfStock, useMarket } from '../lib/store'
-import { getDetail, getIndexChart, getLimitUps, getMarketGlobal, getMarketOverview, getNews, getStockChart, getStockEvents, getWorldChart } from '../lib/api'
+import { getDetail, getIndexChart, getLimitUps, getMarketGlobal, getMarketOverview, getNews, getStockChart, getStockChartPast, getStockEvents, getWorldChart } from '../lib/api'
 import { fmtChange, fmtIndex, fmtPrice, fmtRate, fmtVolume, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import Chart from '../components/Chart'
@@ -92,6 +92,33 @@ function useChart(fetcher, key, period, kind = 'stock', prefetch = []) {
     return () => { alive = false; clearTimeout(timer) }
   }, [id])
   return state
+}
+
+// 지난 날 분봉 + 오늘 분봉 (오늘 분봉이 아직 없으면 지난 날만)
+const withPast = (past, candles) => (past?.candles?.length ? [...past.candles, ...(candles || [])] : candles)
+
+// 지난 거래일 분봉: 분봉 화면을 열 때 한 번 받아 오늘 분봉 앞에 붙인다 (오늘 분봉만 5초마다 다시 받음)
+const pastCache = new Map()   // `${코드}:${기간}` → { session, candles }
+function usePastMinutes(code, period) {
+  const intraday = String(period).endsWith('m')
+  const id = `${code}:${period}`
+  const [past, setPast] = useState(() => pastCache.get(id) || null)
+  useEffect(() => {
+    setPast(pastCache.get(id) || null)
+    if (!intraday) return
+    let alive = true
+    getStockChartPast(code, period)
+      .then((d) => {
+        if (!d?.candles?.length) return
+        pastCache.delete(id)
+        pastCache.set(id, d)
+        if (pastCache.size > 20) pastCache.delete(pastCache.keys().next().value)
+        if (alive) setPast(d)
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [id])
+  return intraday ? past : null
 }
 
 // 1.5초 실시간 시세를 마지막 봉에 바로 반영 (분봉은 새 분이 되면 봉 추가) (다음 차트 조회 전까지 사이를 메움)
@@ -193,6 +220,7 @@ export default function Stock({ code }) {
   const name = info?.name || live?.name || code
   const chart = useChart(getStockChart, code, period, 'stock', ['D', 'W', 'M', 'Y', '1m'])
   const intraday = period.endsWith('m')
+  const past = usePastMinutes(code, period)
 
   useEffect(() => watch(code, true), [code, watch])   // 보고 있는 종목은 1.5초마다
   useEffect(() => {   // 차트가 먼저 뜨게 조금 뒤에 호가를 미리 받아 둠
@@ -268,8 +296,9 @@ export default function Stock({ code }) {
         {view === 'chart' ? (
           <div className="card chart-card">
             {chart.candles === null ? <div className="skeleton chart-skel" /> :
-              <Chart candles={withLivePrice(chart.candles, live?.price, period, detail)} resetKey={`${code}:${period}`}
-                baseline={intraday ? d?.prev_close : undefined} initialCount={intraday ? 120 : 80} format={fmtPrice} current={price} />}
+              <Chart candles={withPast(past, withLivePrice(chart.candles, live?.price, period, detail))} resetKey={`${code}:${period}`}
+                baseline={intraday ? d?.prev_close : undefined} initialCount={intraday ? 120 : 80} format={fmtPrice} current={price}
+                dayLabel={past?.session} />}
             <PeriodTabs periods={MAIN_PERIODS} value={period} onChange={setPeriod} />
           </div>
         ) : (

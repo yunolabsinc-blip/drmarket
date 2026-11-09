@@ -620,3 +620,4 @@ html[data-swipe="prev"] main.page { animation: swipe-prev .26s ease-out; }
 .ext-link .muted { flex: 1; font-size: 12.5px; }
 .ext-link svg { color: var(--text-3); }
 .ext-link:hover { background: #fafbfc; }
+.chart-day { font-size: 10.5px; fill: var(--text-3); }
