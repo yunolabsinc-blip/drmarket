@@ -190,14 +190,16 @@ function PeriodTabs({ periods, value, onChange }) {
   )
 }
 
-function Stat({ label, value, className }) {
+// sub: 값 아래 작은 글씨 (시가·고가·저가의 전일 종가 대비 %)
+function Stat({ label, value, className, sub }) {
   return (
     <div className="stat">
       <span>{label}</span>
-      <b className={className}>{value}</b>
+      <b className={className}>{value}{sub && <small className="stat-sub">{sub}</small>}</b>
     </div>
   )
 }
+const vsPrev = (v, prev) => (v > 0 && prev > 0 ? fmtRate(((v - prev) / prev) * 100) : null)
 
 export default function Stock({ code }) {
   const { prices, stockMap, favorites, toggleFavorite, memos, setMemo, watch, flash } = useMarket()
@@ -309,9 +311,9 @@ export default function Stock({ code }) {
 
         {d && (
           <div className="card stats">
-            <Stat label="시가" value={fmtPrice(d.open)} className={tone(d.open - d.prev_close)} />
-            <Stat label="고가" value={fmtPrice(d.high)} className={tone(d.high - d.prev_close)} />
-            <Stat label="저가" value={fmtPrice(d.low)} className={tone(d.low - d.prev_close)} />
+            <Stat label="시가" value={fmtPrice(d.open)} className={tone(d.open - d.prev_close)} sub={vsPrev(d.open, d.prev_close)} />
+            <Stat label="고가" value={fmtPrice(d.high)} className={tone(d.high - d.prev_close)} sub={vsPrev(d.high, d.prev_close)} />
+            <Stat label="저가" value={fmtPrice(d.low)} className={tone(d.low - d.prev_close)} sub={vsPrev(d.low, d.prev_close)} />
             <Stat label="전일 종가" value={fmtPrice(d.prev_close)} />
             <Stat label="거래량" value={fmtVolume(live?.volume || d.volume)} />
             <Stat label="거래대금" value={fmtWonShort(live?.trading_value || d.trading_value)} />

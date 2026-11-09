@@ -329,6 +329,9 @@ export default function Chart({ candles, baseline: base0, height = 300, format =
       refC = j > 0 ? candles[j - 1].c : null
     }
   }
+  // 아래 시간 눈금: 일봉 이상은 "26-11-09", 분봉이 여러 날에 걸쳐 보이면 날짜만, 하루 안이면 시각만 (글자가 겹치지 않게)
+  const spansDays = dayOf(candles[start].t) !== dayOf(candles[end - 1].t)
+  const axisLabel = (t) => (/^\d{4}-/.test(t) ? t.slice(2) : spansDays ? dayOf(t) || dayLabel || t : t.slice(-5))
   // 날짜가 바뀌는 봉 (분봉에서 지난 날과 이어 볼 때 경계선)
   const dayStarts = []
   if (base0 !== undefined || candles.some((d) => dayOf(d.t))) {
@@ -371,7 +374,7 @@ export default function Chart({ candles, baseline: base0, height = 300, format =
         ))}
         {dateIdx.map((i, k) => (
           <text key={k} x={x(i)} y={height - 5} textAnchor={k === 0 ? 'start' : k === 3 ? 'end' : 'middle'} className="chart-axis">
-            {/^\d{4}-/.test(candles[i].t) ? candles[i].t.slice(2) : candles[i].t}
+            {axisLabel(candles[i].t)}
           </text>
         ))}
         {c && (
