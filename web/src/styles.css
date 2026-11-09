@@ -621,3 +621,7 @@ html[data-swipe="prev"] main.page { animation: swipe-prev .26s ease-out; }
 .ext-link svg { color: var(--text-3); }
 .ext-link:hover { background: #fafbfc; }
 .chart-day { font-size: 10.5px; fill: var(--text-3); }
+.gate { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px 16px; text-align: center; }
+.gate h1 { font-size: 22px; font-weight: 750; letter-spacing: -0.03em; }
+.gate p { color: var(--text-3); font-size: 14px; margin-bottom: 10px; }
+.gate form { width: 100%; max-width: 320px; }
