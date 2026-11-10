@@ -435,6 +435,14 @@ button.cal-row:hover { background: #fafbfc; }
 .ev-bonus { background: #ecfdf5; color: #059669; }
 .ev-meeting { background: #eef5ff; color: var(--down); }
 .ev-capdec, .ev-merger { background: #f5f3ff; color: #7c3aed; }
+.daily { padding: 6px 0; }
+.daily-row { display: grid; grid-template-columns: 1.1fr 1.2fr 1.1fr 1fr 1.1fr; gap: 6px; padding: 9px 14px; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.daily-row > :first-child { text-align: left; color: var(--text-2); }
+.daily-row b { font-weight: 700; }
+.daily-head { font-size: 12px; color: var(--text-3); border-bottom: 1px solid var(--line); padding-top: 6px; }
+.daily-head > :first-child { color: var(--text-3); }
+.daily-more { display: block; width: 100%; padding: 12px 0; text-align: center; }
+.daily-empty { padding: 24px; text-align: center; }
 .limit-row { display: flex; align-items: baseline; gap: 12px; padding: 10px 18px; font-size: 14px; }
 .limit-row span { flex: 1; font-weight: 600; }
 .limit-row small { color: var(--text-3); font-size: 12px; }

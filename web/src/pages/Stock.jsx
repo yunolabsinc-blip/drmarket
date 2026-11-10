@@ -121,6 +121,63 @@ function usePastMinutes(code, period) {
   return intraday ? past : null
 }
 
+// 일봉: 시세 탭과 전일 종가 등락률에 쓴다 (차트에서 받아 둔 일봉이 있으면 그대로, 없으면 한 번 받음)
+function useDaily(code) {
+  const id = `stock:${code}:D`
+  const [candles, setCandles] = useState(() => chartCache.get(id) || null)
+  useEffect(() => {
+    let alive = true
+    setCandles(chartCache.get(id) || null)
+    getStockChart(code, 'D', true)
+      .then((d) => { if (d?.candles?.length) { if (!d.partial) remember(id, d.candles); if (alive) setCandles(d.candles) } })
+      .catch(() => alive && setCandles((c) => c || []))
+    return () => { alive = false }
+  }, [id])
+  return candles
+}
+
+const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10)
+
+// 전일 종가가 그날 몇 % 로 끝났는지: 오늘 봉을 빼고 끝에서부터 종가가 전일 종가와 같은 날을 찾아 그 전날과 비교
+function prevCloseRate(candles, prevClose) {
+  if (!candles?.length || !(prevClose > 0)) return null
+  const past = candles[candles.length - 1].t >= kstToday() ? candles.slice(0, -1) : candles
+  let i = past.length - 1
+  for (let k = i; k >= Math.max(1, past.length - 4); k--) if (past[k].c === prevClose) { i = k; break }
+  // 전일 종가(넥스트레이드 포함)가 일봉 종가(KRX)와 다를 수 있어 값은 전일 종가 그대로 쓴다
+  const before = past[i - 1]?.c
+  return before > 0 ? ((prevClose - before) / before) * 100 : null
+}
+
+// 시세 탭: 일별 종가 · 전일 대비 금액 · 등락률 · 거래량 (최근 날짜부터)
+// 오늘 줄은 위 현재가와 같은 기준(전일 종가 prevClose) 으로 등락을 계산
+function DailyPrices({ candles, prevClose }) {
+  const [count, setCount] = useState(30)
+  if (candles === null) return <div className="skeleton chart-skel" />
+  if (!candles.length) return <p className="muted daily-empty">일별 시세를 불러오지 못했습니다</p>
+  const rows = []
+  const today = kstToday()
+  for (let i = candles.length - 1; i >= 0 && rows.length < count; i--) {
+    const c = candles[i], prev = (c.t === today && prevClose) || candles[i - 1]?.c
+    rows.push({ t: c.t, c: c.c, v: c.v, diff: prev ? c.c - prev : null, rate: prev ? ((c.c - prev) / prev) * 100 : null })
+  }
+  return (
+    <>
+      <div className="daily-row daily-head"><span>일자</span><span>종가</span><span>전일 대비</span><span>등락률</span><span>거래량</span></div>
+      {rows.map((r) => (
+        <div key={r.t} className="daily-row">
+          <span>{r.t.slice(2).replace(/-/g, '.')}</span>
+          <b className={tone(r.diff)}>{fmtPrice(r.c)}</b>
+          <span className={tone(r.diff)}>{r.diff == null ? '-' : fmtChange(r.diff)}</span>
+          <span className={tone(r.diff)}>{r.rate == null ? '-' : fmtRate(r.rate)}</span>
+          <span className="muted">{fmtVolume(r.v)}</span>
+        </div>
+      ))}
+      {count < candles.length && <button className="more daily-more" onClick={() => setCount((n) => n + 30)}>더 보기</button>}
+    </>
+  )
+}
+
 // 1.5초 실시간 시세를 마지막 봉에 바로 반영 (분봉은 새 분이 되면 봉 추가) (다음 차트 조회 전까지 사이를 메움)
 const monday = (t) => {
   const d = new Date(`${t}T00:00:00`)
@@ -223,6 +280,7 @@ export default function Stock({ code }) {
   const chart = useChart(getStockChart, code, period, 'stock', ['D', 'W', 'M', 'Y', '1m'])
   const intraday = period.endsWith('m')
   const past = usePastMinutes(code, period)
+  const daily = useDaily(code)
 
   useEffect(() => watch(code, true), [code, watch])   // 보고 있는 종목은 1.5초마다
   useEffect(() => {   // 차트가 먼저 뜨게 조금 뒤에 호가를 미리 받아 둠
@@ -270,6 +328,7 @@ export default function Stock({ code }) {
   const fav = favorites.includes(code)
   const themes = themesOfStock(code)
   const d = detail
+  const prevRate = prevCloseRate(daily, d?.prev_close)
 
   return (
     <>
@@ -294,6 +353,7 @@ export default function Stock({ code }) {
         <div className="segmented">
           <button className={view === 'chart' ? 'on' : ''} onClick={() => setView('chart')}>차트</button>
           <button className={view === 'book' ? 'on' : ''} onClick={() => { if (view !== 'book') track('orderbook'); setView('book') }}>호가</button>
+          <button className={view === 'daily' ? 'on' : ''} onClick={() => setView('daily')}>시세</button>
         </div>
         {view === 'chart' ? (
           <div className="card chart-card">
@@ -302,6 +362,10 @@ export default function Stock({ code }) {
                 baseline={intraday ? d?.prev_close : undefined} initialCount={intraday ? 120 : 80} format={fmtPrice} current={price}
                 dayLabel={past?.session} />}
             <PeriodTabs periods={MAIN_PERIODS} value={period} onChange={setPeriod} />
+          </div>
+        ) : view === 'daily' ? (
+          <div className="card daily">
+            <DailyPrices candles={daily && withLivePrice(daily, live?.price, 'D', detail)} prevClose={d?.prev_close} />
           </div>
         ) : (
           <div className="card">
@@ -314,7 +378,7 @@ export default function Stock({ code }) {
             <Stat label="시가" value={fmtPrice(d.open)} className={tone(d.open - d.prev_close)} sub={vsPrev(d.open, d.prev_close)} />
             <Stat label="고가" value={fmtPrice(d.high)} className={tone(d.high - d.prev_close)} sub={vsPrev(d.high, d.prev_close)} />
             <Stat label="저가" value={fmtPrice(d.low)} className={tone(d.low - d.prev_close)} sub={vsPrev(d.low, d.prev_close)} />
-            <Stat label="전일 종가" value={fmtPrice(d.prev_close)} />
+            <Stat label="전일 종가" value={fmtPrice(d.prev_close)} className={tone(prevRate)} sub={prevRate == null ? null : fmtRate(prevRate)} />
             <Stat label="거래량" value={fmtVolume(live?.volume || d.volume)} />
             <Stat label="거래대금" value={fmtWonShort(live?.trading_value || d.trading_value)} />
             <Stat label="시가총액" value={fmtWonShort(d.market_cap)} />
