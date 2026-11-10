@@ -436,7 +436,7 @@ button.cal-row:hover { background: #fafbfc; }
 .ev-meeting { background: #eef5ff; color: var(--down); }
 .ev-capdec, .ev-merger { background: #f5f3ff; color: #7c3aed; }
 .daily { padding: 6px 0; }
-.daily-row { display: grid; grid-template-columns: 1.1fr 1.2fr 1.1fr 1fr 1.1fr; gap: 6px; padding: 9px 14px; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.daily-row { display: grid; grid-template-columns: max-content repeat(4, minmax(max-content, 1fr)); gap: 8px; padding: 9px 14px; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .daily-row > :first-child { text-align: left; color: var(--text-2); }
 .daily-row b { font-weight: 700; }
 .daily-head { font-size: 12px; color: var(--text-3); border-bottom: 1px solid var(--line); padding-top: 6px; }
