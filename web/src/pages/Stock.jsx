@@ -150,6 +150,13 @@ function prevCloseRate(candles, prevClose) {
 }
 
 // 시세 탭: 일별 종가 · 전일 대비 금액 · 등락률 · 거래량 (최근 날짜부터)
+// 오늘 봉의 거래대금은 실시간 시세 값으로 (일봉은 1분마다 받아 늦음)
+function withTodayValue(candles, value) {
+  const last = candles?.[candles.length - 1]
+  if (!last || !value || last.t !== kstToday()) return candles
+  return [...candles.slice(0, -1), { ...last, a: value }]
+}
+
 // 오늘 줄은 위 현재가와 같은 기준(전일 종가 prevClose) 으로 등락을 계산
 function DailyPrices({ candles, prevClose }) {
   const [count, setCount] = useState(30)
@@ -159,18 +166,18 @@ function DailyPrices({ candles, prevClose }) {
   const today = kstToday()
   for (let i = candles.length - 1; i >= 0 && rows.length < count; i--) {
     const c = candles[i], prev = (c.t === today && prevClose) || candles[i - 1]?.c
-    rows.push({ t: c.t, c: c.c, v: c.v, diff: prev ? c.c - prev : null, rate: prev ? ((c.c - prev) / prev) * 100 : null })
+    rows.push({ t: c.t, c: c.c, v: c.v, a: c.a, diff: prev ? c.c - prev : null, rate: prev ? ((c.c - prev) / prev) * 100 : null })
   }
   return (
     <>
-      <div className="daily-row daily-head"><span>일자</span><span>종가</span><span>전일 대비</span><span>등락률</span><span>거래량</span></div>
+      <div className="daily-row daily-head"><span>일자</span><span>종가</span><span>전일 대비</span><span>등락률</span><span>거래량<br />거래대금</span></div>
       {rows.map((r) => (
         <div key={r.t} className="daily-row">
           <span>{r.t.slice(2).replace(/-/g, '.')}</span>
           <b className={tone(r.diff)}>{fmtPrice(r.c)}</b>
           <span className={tone(r.diff)}>{r.diff == null ? '-' : fmtChange(r.diff)}</span>
           <span className={tone(r.diff)}>{r.rate == null ? '-' : fmtRate(r.rate)}</span>
-          <span className="muted">{fmtVolume(r.v)}</span>
+          <span className="muted">{fmtVolume(r.v)}<br />{fmtWonShort(r.a)}</span>
         </div>
       ))}
       {count < candles.length && <button className="more daily-more" onClick={() => setCount((n) => n + 30)}>더 보기</button>}
@@ -365,7 +372,7 @@ export default function Stock({ code }) {
           </div>
         ) : view === 'daily' ? (
           <div className="card daily">
-            <DailyPrices candles={daily && withLivePrice(daily, live?.price, 'D', detail)} prevClose={d?.prev_close} />
+            <DailyPrices candles={daily && withTodayValue(withLivePrice(daily, live?.price, 'D', detail), live?.trading_value || d?.trading_value)} prevClose={d?.prev_close} />
           </div>
         ) : (
           <div className="card">

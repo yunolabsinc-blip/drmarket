@@ -416,7 +416,7 @@ async def get_stock_chart(background: BackgroundTasks, code: str,
         return {"period": period, "candles": candles, "partial": True}
 
     # 서버끼리 공유 — 새로 켜진 서버도, 다른 사람이 본 종목은 바로 준다 (마지막 봉은 앱이 실시간 시세로 덧그림)
-    body = await _shared(f"chart:{code}:{period}", 60 if open_ else 600, compute, background,
+    body = await _shared(f"chart2:{code}:{period}", 60 if open_ else 600, compute, background,
                          keep=3 * 86400, first=first if quick and period != "Y" else None)
     if not body or not body.get("candles"):
         return {"period": period, "candles": []}

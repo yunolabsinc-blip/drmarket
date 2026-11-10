@@ -873,7 +873,7 @@ async def fetch_daily_chart(code: str, period: str = "D", is_index: bool = False
     period = period if period in _CHART_SPAN else "D"
     span_days, default_pages = _CHART_SPAN[period]
     pages = pages or default_pages
-    key = f"chart:{'U' if is_index else KIS_MARKET}:{code}:{period}:{pages}"
+    key = f"chart2:{'U' if is_index else KIS_MARKET}:{code}:{period}:{pages}"
     cached = _cache_get(key, 60)
     if cached:
         return cached
@@ -910,6 +910,7 @@ async def fetch_daily_chart(code: str, period: str = "D", is_index: bool = False
                 "o": _num(o.get(f[0])), "h": _num(o.get(f[1])),
                 "l": _num(o.get(f[2])), "c": _num(o.get(f[3])),
                 "v": _num(o.get("acml_vol"), int),
+                "a": _num(o.get("acml_tr_pbmn"), int),   # 거래대금(원)
                 "s": o.get("prdy_vrss_sign", ""),   # 1=상한, 2=상승, 3=보합, 4=하한, 5=하락
             }
     rows = [seen[k] for k in sorted(seen)]   # 오래된 → 최신
