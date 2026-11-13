@@ -177,6 +177,13 @@ export default function Chart({ candles, baseline: base0, height = 300, format =
   // 전일 종가 기준선은 오늘 분봉이 화면에 있을 때만 (지난 날만 보고 있으면 의미가 없어 가격 범위만 넓힘)
   const baseline = base0 > 0 && visible.some((d) => !dayOf(d.t)) ? base0 : undefined
 
+  // 오른쪽 가격 눈금 폭: 비트코인처럼 큰 값(93,170,000)도 잘리지 않게 글자 수에 맞춤
+  const padR = useMemo(() => {
+    let hi = 0
+    for (const d of visible) if (d.h > hi) hi = d.h
+    return Math.max(PAD.right, Math.ceil(String(format(hi * 1.05)).length * 6.4 + 12))
+  }, [visible, format])
+
   const geo = useMemo(() => {
     if (!visible.length) return null
     let min = Infinity, max = -Infinity
@@ -187,7 +194,7 @@ export default function Chart({ candles, baseline: base0, height = 300, format =
     const span = max - min
     min -= span * 0.04; max += span * 0.04
     const priceH = height - PAD.top - PAD.bottom - VOL_H - 6
-    const w = width - PAD.left - PAD.right
+    const w = width - PAD.left - padR
     const step = w / count
     const volMax = Math.max(1, ...visible.map((d) => d.v))
     return {
@@ -197,7 +204,7 @@ export default function Chart({ candles, baseline: base0, height = 300, format =
       volTop: PAD.top + priceH + 6,
       vy: (v) => PAD.top + priceH + 6 + VOL_H - (v / volMax) * VOL_H,
     }
-  }, [visible, mas, start, end, count, baseline, width, height])
+  }, [visible, mas, start, end, count, baseline, width, height, padR])
 
   live.current = { len, count, end, start, step: geo?.step || 1 }
 
@@ -215,7 +222,7 @@ export default function Chart({ candles, baseline: base0, height = 300, format =
     const UP = color('--up'), DOWN = color('--down')
     const { x, y, vy, min, max, step, volTop } = geo
     const px = (v) => Math.round(v * dpr) / dpr + 0.5 / dpr   // 선이 번지지 않게 화소에 맞춤
-    const right = width - PAD.right
+    const right = width - padR
 
     // 눈금선
     ctx.lineWidth = 1
@@ -353,7 +360,7 @@ export default function Chart({ candles, baseline: base0, height = 300, format =
       <canvas ref={canvas} className="chart-canvas" />
       <svg width={width} height={height}>
         {ticks.map((t, i) => (
-          <text key={i} x={width - PAD.right + 6} y={y(t) + 4} className="chart-axis">{format(t)}</text>
+          <text key={i} x={width - padR + 6} y={y(t) + 4} className="chart-axis">{format(t)}</text>
         ))}
         {!c && (
           <>
@@ -380,20 +387,20 @@ export default function Chart({ candles, baseline: base0, height = 300, format =
         {c && (
           <>
             <line x1={x(cross)} x2={x(cross)} y1={PAD.top} y2={volTop + VOL_H} stroke="var(--text-2)" strokeDasharray="2 3" />
-            <line x1={PAD.left} x2={width - PAD.right} y1={y(c.c)} y2={y(c.c)} stroke="var(--text-2)" strokeDasharray="2 3" />
-            <rect x={width - PAD.right + 2} y={y(c.c) - 9} width={PAD.right - 4} height={18} rx="4" fill="var(--text)" />
-            <text x={width - PAD.right + 6} y={y(c.c) + 4} className="chart-axis" fill="#fff">{format(c.c)}</text>
+            <line x1={PAD.left} x2={width - padR} y1={y(c.c)} y2={y(c.c)} stroke="var(--text-2)" strokeDasharray="2 3" />
+            <rect x={width - padR + 2} y={y(c.c) - 9} width={padR - 4} height={18} rx="4" fill="var(--text)" />
+            <text x={width - padR + 6} y={y(c.c) + 4} className="chart-axis" fill="#fff">{format(c.c)}</text>
             {/* 고른 봉의 등락률을 가격선 위에 */}
             {refC ? (
-              <text x={width - PAD.right - 4} y={y(c.c) - 5} textAnchor="end" className={`chart-label chart-pct ${tone(c.c, refC)}`}>{pct(c.c, refC)}</text>
+              <text x={width - padR - 4} y={y(c.c) - 5} textAnchor="end" className={`chart-label chart-pct ${tone(c.c, refC)}`}>{pct(c.c, refC)}</text>
             ) : null}
           </>
         )}
         {/* 현재가 표시 (최신 봉이 보일 때) */}
         {end === len && !c && (
           <>
-            <rect x={width - PAD.right + 2} y={y(last.c) - 9} width={PAD.right - 4} height={18} rx="4" fill={last.c >= last.o ? 'var(--up)' : 'var(--down)'} />
-            <text x={width - PAD.right + 6} y={y(last.c) + 4} className="chart-axis" fill="#fff">{format(last.c)}</text>
+            <rect x={width - padR + 2} y={y(last.c) - 9} width={padR - 4} height={18} rx="4" fill={last.c >= last.o ? 'var(--up)' : 'var(--down)'} />
+            <text x={width - padR + 6} y={y(last.c) + 4} className="chart-axis" fill="#fff">{format(last.c)}</text>
           </>
         )}
       </svg>

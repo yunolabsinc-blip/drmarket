@@ -9,6 +9,7 @@ import { Disclaimer, Empty, ExternalIcon, Rate, StarIcon, SubBar } from '../comp
 import { NewsItems } from '../components/NewsList'
 import { EventRows } from '../components/Calendar'
 import { track } from '../lib/analytics'
+import { useCryptoLive } from '../lib/crypto'
 
 // MTS 방식: 분봉(1·3·5·10·30·60) + 일·주·월·년봉
 const MINUTES = [1, 3, 5, 10, 30, 60]
@@ -85,7 +86,7 @@ function useChart(fetcher, key, period, kind = 'stock', prefetch = []) {
         .finally(() => alive && schedule())
     }
     const schedule = () => {
-      const open = marketPhase().key === 'open'
+      const open = marketPhase().key === 'open' || String(key).startsWith('KRW-')   // 비트코인·이더리움은 24시간
       timer = setTimeout(() => load(false), partial ? 800 : open ? (intraday ? 5000 : 60000) : 300000)
     }
     load(true)
@@ -475,6 +476,19 @@ function withWorldPrice(candles, world, period) {
   const price = world?.value
   if (!candles?.length || !price || !world.date) return candles
   const last = candles[candles.length - 1]
+  if (String(period).endsWith('m')) {
+    // 비트코인·이더리움 분봉: 지금 분이 마지막 봉이면 갱신, 새 분이면 봉 추가 (24시간 거래, KST)
+    const n = parseInt(period, 10) || 1
+    const kst = new Date(Date.now() + 9 * 3600000)
+    const bucket = Math.floor((kst.getUTCHours() * 60 + kst.getUTCMinutes()) / n) * n
+    const t = `${String(Math.floor(bucket / 60)).padStart(2, '0')}:${String(bucket % 60).padStart(2, '0')}`
+    if (last.t === t) {
+      if (last.c === price) return candles
+      return [...candles.slice(0, -1), { ...last, c: price, h: Math.max(last.h, price), l: Math.min(last.l, price) }]
+    }
+    if (/^\d\d:\d\d$/.test(last.t) && last.t > t) return candles   // 받은 봉이 더 새것
+    return [...candles, { t, o: price, h: price, l: price, c: price, v: 0 }]
+  }
   const [mm, dd] = world.date.split('/')
   const same = period === 'D' ? last.t.slice(5) === `${mm}-${dd}`
     : period === 'M' ? last.t.slice(5, 7) === mm
@@ -489,23 +503,23 @@ export function IndexPage({ code }) {
   // 코스피·코스닥은 한투, 나머지(해외 지수·선물·환율·유가)는 시장종합에서 받은 네이버 지연 시세
   const domestic = !!INDEX_NAMES[code]
   const [overview, setOverview] = useState(() => getMarketOverview.peek())
-  const world = domestic ? null : overview?.global?.find((g) => g.code === code)
+  const [world] = useCryptoLive([domestic ? null : overview?.global?.find((g) => g.code === code)])   // 비트코인·이더리움은 체결될 때마다
   const worldOpen = !!world && (world.open === true || (world.open == null && isMarketOpen(world.market)))
   // 해외 시세는 해외 부분만 따로 받음 — 그 시장이 열려 있으면 3초마다 (닫혀 있으면 3분)
   useEffect(() => {
     if (domestic) return
     let alive = true, timer
     const load = () => (overview ? getMarketGlobal() : getMarketOverview()).then((d) => alive && d?.global?.length && setOverview(d)).catch(() => {})
-      .finally(() => { if (alive) timer = setTimeout(load, document.visibilityState === 'visible' && worldOpen ? 3000 : 180000) })
+      .finally(() => { if (alive) timer = setTimeout(load, document.visibilityState === 'visible' && worldOpen && world.market !== 'crypto' ? 3000 : 180000) })
     load()
     return () => { alive = false; clearTimeout(timer) }
   }, [code, worldOpen])
-  const periods = domestic ? INDEX_PERIODS : INDEX_PERIODS.filter((p) => (world?.periods || ['D']).includes(p.id))
+  const periods = domestic ? INDEX_PERIODS : MAIN_PERIODS.filter((p) => (world?.periods || ['D']).includes(p.id))   // 분봉은 비트코인·이더리움만
   const [period, setPeriodState] = useState(() => loadPeriod('drm.indexPeriod', 'D'))
   const setPeriod = (v) => { setPeriodState(v); savePeriod('drm.indexPeriod', v) }
-  const shown = periods.some((p) => p.id === period) ? period : 'D'
+  const shown = periods.some((p) => p.id === (period.endsWith('m') ? 'min' : period)) ? period : 'D'
   const chart = useChart(domestic ? getIndexChart : getWorldChart, code, shown, domestic ? 'index' : 'world',
-    domestic ? ['D', 'W', 'M', 'Y'] : periods.map((p) => p.id))
+    domestic ? ['D', 'W', 'M', 'Y'] : periods.map((p) => p.id).filter((p) => p !== 'min'))
   const name = INDEX_NAMES[code] || world?.name || '지수'
   const cur = domestic ? indices.find((i) => i.name === name) : world
   return (
@@ -527,7 +541,7 @@ export function IndexPage({ code }) {
         <div className="card chart-card">
           {chart.candles === null ? <div className="skeleton chart-skel" /> :
             <Chart candles={world ? withWorldPrice(chart.candles, world, shown) : chart.candles} resetKey={`${code}:${shown}`} format={world?.market === 'crypto' ? fmtPrice : fmtIndex}
-              current={cur?.value} />}
+              current={cur?.value} initialCount={shown.endsWith('m') ? 120 : 80} />}
           {periods.length > 1 && <PeriodTabs periods={periods} value={shown} onChange={setPeriod} />}
         </div>
         <Disclaimer />

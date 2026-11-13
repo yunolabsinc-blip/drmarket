@@ -82,7 +82,7 @@ async def _crypto(code: str, name: str) -> dict | None:
         "changeRate": round(_num(t.get("signed_change_rate")) * 100, 2),
         "date": f"{d[4:6]}/{d[6:8]}" if len(d) == 8 else "",
         "spark": [_num(r.get("trade_price")) for r in reversed(days if isinstance(days, list) else [])],
-        "open": True, "delay": "업비트", "periods": ["D", "W", "M"],
+        "open": True, "delay": "업비트", "periods": ["min", "D", "W", "M"],
     }
 
 
@@ -132,6 +132,7 @@ async def fetch_world() -> list[dict]:
     return items or _cache["items"]
 
 
+_CRYPTO_MIN = ("1m", "3m", "5m", "10m", "30m", "60m")   # 업비트 분봉 (앱의 분봉 단위와 같음)
 _CANDLE = {"D": "dayCandle", "W": "weekCandle", "M": "monthCandle", "Y": "yearCandle"}
 _chart_cache: dict = {}
 
@@ -143,15 +144,27 @@ async def fetch_world_chart(code: str, period: str = "D") -> list[dict]:
         return []
     kind = item[0]
     if kind == "crypto":
-        period = period if period in ("D", "W", "M") else "D"
+        period = period if period in ("D", "W", "M") or period in _CRYPTO_MIN else "D"
     else:
         period = period if period in _CANDLE and kind in ("index", "futures") else "D"
     key = (code, period)
     hit = _chart_cache.get(key)
-    if hit and time.time() - hit[0] < (60 if kind == "crypto" else 300):
+    if hit and time.time() - hit[0] < (3 if period in _CRYPTO_MIN else 60 if kind == "crypto" else 300):
         return hit[1]
     try:
-        if kind == "crypto":
+        if kind == "crypto" and period in _CRYPTO_MIN:
+            # 분봉: 오늘(KST) 봉은 "HH:MM", 지난 날은 "MM/DD HH:MM" (주식 분봉과 같은 모양 — 차트가 날짜 경계를 그림)
+            rows = await _upbit(f"/candles/minutes/{period[:-1]}?market={code}&count=200")
+            today = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 9 * 3600))
+            candles = []
+            for r in reversed(rows):
+                k = r.get("candle_date_time_kst", "")
+                if len(k) < 16 or _num(r.get("trade_price")) <= 0:
+                    continue
+                t = k[11:16] if k[:10] == today else f"{k[5:7]}/{k[8:10]} {k[11:16]}"
+                candles.append({"t": t, "o": _num(r.get("opening_price")), "h": _num(r.get("high_price")),
+                                "l": _num(r.get("low_price")), "c": _num(r.get("trade_price")), "v": _num(r.get("candle_acc_trade_volume"))})
+        elif kind == "crypto":
             unit = {"D": "days", "W": "weeks", "M": "months"}[period]
             rows = await _upbit(f"/candles/{unit}?market={code}&count=200")
             candles = [{"t": r["candle_date_time_kst"][:10], "o": _num(r.get("opening_price")), "h": _num(r.get("high_price")),

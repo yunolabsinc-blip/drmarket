@@ -10,6 +10,7 @@ import { Disclaimer, Section, Skeleton, StatusLine } from '../components/ui'
 import { ThemeHeadline } from '../components/ThemeGrid'
 import { prefetchKeyNews, useKeyNews } from '../lib/themeNews'
 import { track } from '../lib/analytics'
+import { useCryptoLive } from '../lib/crypto'
 
 const TABS = [
   { id: 'overview', label: '종합', path: '/market' },
@@ -71,10 +72,10 @@ function IndexBoard({ global }) {
   // 장 열림 표시가 시간 따라 바뀌게 1분마다 다시 그림
   const [, setTick] = useState(0)
   useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 60000); return () => clearInterval(t) }, [])
-  const items = [
+  const items = useCryptoLive([   // 비트코인·이더리움은 체결될 때마다
     ...indices.map((i) => ({ ...i, code: i.name === '코스피' ? '0001' : '1001', domestic: true, market: 'kr' })),
     ...(global || []),
-  ]
+  ])
   // 주요 시장(코스피·코스닥·나스닥·S&P 500)만 늘 보이고 나머지는 펼쳐 보기 (펼침 여부 기억)
   const [more, setMore] = useState(() => { try { return localStorage.getItem('drm.boardMore') === '1' } catch { return false } })
   const toggle = () => { setMore(!more); try { localStorage.setItem('drm.boardMore', more ? '0' : '1') } catch {} }

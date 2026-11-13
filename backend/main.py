@@ -430,7 +430,7 @@ async def get_world_chart(code: str, period: str = Query("D", description="D/W/M
     """네이버 증권 지연 시세 기준"""
     candles = await world.fetch_world_chart(code, period)
     body = {"period": period, "candles": candles}
-    fresh = 30 if code.startswith("KRW-") else 300   # 비트코인은 24시간 움직임
+    fresh = (3 if period.endswith("m") else 30) if code.startswith("KRW-") else 300   # 비트코인은 24시간 움직임
     return _cdn(body, fresh, 3600) if candles else body
 
 
