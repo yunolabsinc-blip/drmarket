@@ -303,7 +303,7 @@ async def get_stock_price(code: str):
 async def get_batch_prices(codes: str = Query(..., description="쉼표 구분 종목코드, 예) 005930,000660,028300")):
     """최대 150개 종목 동시 조회"""
     code_list = list(dict.fromkeys(c.strip().lstrip("A") for c in codes.split(",") if c.strip()))[:150]
-    return {"stocks": await kis.fetch_batch_prices(code_list)}
+    return {"stocks": await kis.fetch_batch_prices(code_list), "poll": kis.price_poll_hint()}
 
 
 @app.get("/api/stock/{code}/detail", summary="종목 상세")
@@ -380,19 +380,22 @@ def _market_open() -> bool:
 
 
 @app.get("/api/stock/{code}/chart/past", summary="종목 지난 거래일 분봉")
-async def get_stock_chart_past(code: str, period: str = Query("1m", description="1m/3m/5m/10m/30m/60m")):
+async def get_stock_chart_past(background: BackgroundTasks, code: str, period: str = Query("1m", description="1m/3m/5m/10m/30m/60m")):
     n = int(period[:-1]) if period.endswith("m") and period[:-1].isdigit() else 0
     if n not in (1, 3, 5, 10, 30, 60):
         raise HTTPException(400, "분봉은 1, 3, 5, 10, 30, 60분만 지원합니다.")
-    past = await kis.fetch_minute_past(code)
+    past = await kis.fetch_minute_past(code, wait_all=False)
     body = {"period": period, "session": past["session"], "candles": kis.aggregate_minutes(past["rows"], n)}
+    if past.get("partial"):   # 가까운 날만 먼저 — 나머지 날은 응답 뒤에 받아 두고 앱이 곧 다시 묻는다
+        background.add_task(kis.fetch_minute_past, code)
+        return JSONResponse({**body, "partial": True}, headers={"Cache-Control": "no-store"})
     return _cdn(body, 300, 3600) if past["rows"] else JSONResponse(body, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/stock/{code}/chart", summary="종목 차트")
 async def get_stock_chart(background: BackgroundTasks, code: str,
                           period: str = Query("D", description="1m/3m/5m/10m/30m/60m (당일 분봉) · D/W/M/Y (일/주/월/년봉)"),
-                          quick: bool = Query(False, description="분봉: 처음 열 때 최근 2시간만 먼저")):
+                          quick: bool = Query(False, description="분봉: 처음 열 때 최근 1시간만 먼저")):
     if period.endswith("m") and period[:-1].isdigit():
         n = int(period[:-1])
         if n not in (1, 3, 5, 10, 30, 60):
@@ -528,6 +531,26 @@ async def get_stocks():
 # ──────────────────────────────────────────────
 # 랭킹
 # ──────────────────────────────────────────────
+_warm_at = {"t": 0.0}
+
+
+async def _warm_popular(rows: list[dict]):
+    """거래대금 상위 8종목의 오늘·지난 분봉을 미리 받아 둔다 — 많이 보는 종목은 처음 열어도 바로 뜨게.
+    10분에 한 번, 한 종목씩 차례로 (사용자 요청을 밀어내지 않게). 받아 둔 것은 공유 저장소에 남아 다음엔 거의 조회가 없다"""
+    if time.time() - _warm_at["t"] < 600:
+        return
+    _warm_at["t"] = time.time()
+    for s in rows[:8]:
+        code = s.get("code")
+        if not code or not kis.APP_KEY:
+            continue
+        try:
+            await kis.fetch_minute_chart(code)
+            await kis.fetch_minute_past(code)
+        except Exception as e:
+            logger.warning("[warm] %s 실패: %s", code, e)
+
+
 @app.get("/api/ranking/amount", summary="거래대금 상위")
 async def ranking_amount(
     background: BackgroundTasks,
@@ -535,6 +558,7 @@ async def ranking_amount(
 ):
     """거래대금 기준 상위 종목"""
     if market == "all" and (r := await ranking.get_ranking("amount", background)):
+        background.add_task(_warm_popular, r["ranking"])
         return r
     m = "J" if market == "kospi" else ("Q" if market == "kosdaq" else "all")
     return {"ranking": await kis.fetch_volume_rank(m, "amount")}

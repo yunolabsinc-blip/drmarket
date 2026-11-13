@@ -25,6 +25,9 @@ const save = (key, value) => {
 }
 
 // 마지막으로 받은 시세·지수·종목 목록: 다음에 앱을 열 때 서버 응답을 기다리지 않고 먼저 보여 준다
+// 시세 갱신 간격(ms): 서버가 시세 응답에 권장값을 실어 보낸다
+let poll = { all: 2000, fast: 1000 }
+
 const SNAP_KEY = 'drm.snapshot'
 const snapshot = load(SNAP_KEY, null)
 const cachedStocks = load('drm.stocks', [])
@@ -58,7 +61,7 @@ export function MarketProvider({ children }) {
 
   useEffect(() => save('drm.favorites', favorites), [favorites])
   useEffect(() => save('drm.memos', memos), [memos])
-  // 시세 기억은 5초에 한 번만 저장 (1.5초마다 쓰지 않도록)
+  // 시세 기억은 5초에 한 번만 저장 (1초마다 쓰지 않도록)
   const snapTimer = useRef(null)
   const snapData = useRef(null)
   useEffect(() => {
@@ -120,6 +123,7 @@ export function MarketProvider({ children }) {
     for (let i = 0; i < codes.length; i += 150) chunks.push(codes.slice(i, i + 150))
     const all = await Promise.all(chunks.map((c) => getBatchPrices(c)))   // 나눠 받을 때도 동시에
     for (const data of all) {
+      if (data.poll?.all > 0 && data.poll?.fast > 0) poll = data.poll   // 서버가 정한 간격 (증권사 한도에 걸리면 늦춤)
       for (const s of data.stocks || []) {
         if (s.source === 'live' && s.price > 0) result[s.code] = s
       }
@@ -139,7 +143,7 @@ export function MarketProvider({ children }) {
     return true
   }, [favorites, applyPrices])
 
-  // 지금 보고 있는 종목(종목 화면)은 1.5초마다 따로 갱신
+  // 지금 보고 있는 종목(종목 화면)은 1초마다 따로 갱신
   const refreshFast = useCallback(async () => {
     const codes = watchedCodes(true)
     if (!codes.length) return
@@ -154,7 +158,7 @@ export function MarketProvider({ children }) {
     setIndices(live)
   }, [])
 
-  // 폴링: 시세는 장중 3초(보고 있는 종목은 1.5초) / 장외 60초, 지수는 장중 5초
+  // 폴링: 시세는 장중 2초(보고 있는 종목은 1초 — 서버 권장값 poll을 따름) / 장외 60초, 지수는 장중 5초
   // 간격은 요청 시작 기준이라 응답 시간만큼 늦어지지 않음
   useEffect(() => {
     let stopped = false
@@ -175,13 +179,13 @@ export function MarketProvider({ children }) {
           if (!stopped) setStatus((s) => (s === 'demo' ? s : 'error'))
         }
       }
-      // 실패하면 5초 뒤 재시도, 성공하면 장중 5초 / 장외 60초
-      if (!stopped) priceTimer = setTimeout(tickPrices, !ok ? 5000 : marketPhase().key === 'open' ? after(started, 3000) : 60000)
+      // 실패하면 5초 뒤 재시도, 성공하면 장중 poll.all / 장외 60초
+      if (!stopped) priceTimer = setTimeout(tickPrices, !ok ? 5000 : marketPhase().key === 'open' ? after(started, poll.all) : 60000)
     }
     const tickFast = async () => {
       const started = Date.now()
       if (document.visibilityState === 'visible' && marketPhase().key === 'open') await refreshFast().catch(() => {})
-      if (!stopped) fastTimer = setTimeout(tickFast, after(started, 1500))
+      if (!stopped) fastTimer = setTimeout(tickFast, after(started, poll.fast))
     }
     let firstIndex = true
     const tickIndices = async () => {

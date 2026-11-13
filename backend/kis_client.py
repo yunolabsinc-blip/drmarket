@@ -127,6 +127,13 @@ def poll_hint() -> int:
     return 1000 if n <= 4 else 1500 if n <= 8 else 3000 if n <= 20 else 5000 if n <= 40 else 8000
 
 
+def price_poll_hint() -> dict:
+    """시세 갱신 간격(ms) 권장값: 평소 전체 2초·보는 종목 1초, 증권사 한도 초과가 났으면 30초 동안 늦춘다"""
+    if time.monotonic() - _load["rate_limited_at"] < 30:
+        return {"all": 5000, "fast": 3000}
+    return {"all": 2000, "fast": 1000}
+
+
 def _cache_get(key: str, ttl: float):
     hit = _resp_cache.get(key)
     if hit and time.monotonic() - hit[0] < ttl:
@@ -949,7 +956,7 @@ def aggregate_minutes(rows: list[dict], n: int) -> list[dict]:
 
 
 _minute_locks: dict[str, asyncio.Lock] = {}
-QUICK_WINDOWS = 4   # 처음 열 때 먼저 보내는 최근 구간 수 (30분 × 4 = 2시간)
+QUICK_WINDOWS = 2   # 처음 열 때 먼저 보내는 최근 구간 수 (30분 × 2 = 1시간 — 나머지는 바로 이어 채움)
 
 
 def _windows(top: datetime, start_t: datetime, stop_t: datetime | None = None) -> list[str]:
@@ -965,7 +972,7 @@ def _windows(top: datetime, start_t: datetime, stop_t: datetime | None = None) -
 
 
 def minute_partial(code: str) -> bool:
-    """오늘 분봉을 아직 최근 2시간치만 받아 둔 상태인지"""
+    """오늘 분봉을 아직 최근 1시간치만 받아 둔 상태인지"""
     for k, (_, v) in list(_resp_cache.items()):
         if k.startswith(f"minute_full:{code}:") and isinstance(v, dict):
             return bool(v.get("from"))
@@ -974,7 +981,7 @@ def minute_partial(code: str) -> bool:
 
 async def fetch_minute_chart(code: str, quick: bool = False) -> list[dict]:
     """당일 1분봉. KIS는 1회 30개씩이라 30분 간격 구간을 동시에 조회해 이어 붙인다.
-    quick=True면 처음 열 때 최근 2시간만 먼저 받고(조회 4회), 나머지는 다음 호출(응답 뒤 백그라운드)에서 채운다."""
+    quick=True면 처음 열 때 최근 1시간만 먼저 받고(조회 2회), 나머지는 다음 호출(응답 뒤 백그라운드)에서 채운다."""
     key = f"minute:{code}"
     cached = _cache_get(key, 5)
     if cached:
@@ -1098,8 +1105,8 @@ PAST_MINUTE_DAYS = 5   # 오늘을 뺀 최근 거래일 수
 _past_locks: dict[str, asyncio.Lock] = {}
 
 
-async def _past_day_minutes(code: str, date: str, mkt: str) -> list[dict]:
-    """date(YYYYMMDD) 하루치 1분봉. 지난 날은 바뀌지 않으므로 받은 것은 공유 저장소에 10일 보관"""
+async def _past_day_saved(code: str, date: str) -> list[dict] | None:
+    """받아 둔 지난 날 분봉 (없으면 None — 증권사에 묻지 않음)"""
     rkey = f"drmarket:mpast2:{code}:{date}"
     mem = _cache_get(rkey, 86400)
     if mem is not None:
@@ -1112,6 +1119,15 @@ async def _past_day_minutes(code: str, date: str, mkt: str) -> list[dict]:
             return rows
         except Exception:
             pass
+    return None
+
+
+async def _past_day_minutes(code: str, date: str, mkt: str) -> list[dict]:
+    """date(YYYYMMDD) 하루치 1분봉. 지난 날은 바뀌지 않으므로 받은 것은 공유 저장소에 10일 보관"""
+    rkey = f"drmarket:mpast2:{code}:{date}"
+    saved = await _past_day_saved(code, date)
+    if saved is not None:
+        return saved
     day_start, day_end = ("080000", "200000") if mkt != "J" else ("090000", "153000")
     # 1회 최대 120개(2시간)지만 응답이 덜 오는 구간이 있어, 1시간씩만 당겨 앞뒤 구간이 겹치게 받는다
     ends, t = [], datetime.strptime(day_end, "%H%M%S")
@@ -1157,12 +1173,15 @@ async def _past_day_minutes(code: str, date: str, mkt: str) -> list[dict]:
     return rows
 
 
-async def fetch_minute_past(code: str, days: int = PAST_MINUTE_DAYS) -> dict:
-    """오늘(지금 차트에 나오는 거래일)을 뺀 최근 거래일들의 1분봉. {"session": 오늘 분봉의 날짜 "MM/DD", "rows": [...]}"""
+async def fetch_minute_past(code: str, days: int = PAST_MINUTE_DAYS, wait_all: bool = True) -> dict:
+    """오늘(지금 차트에 나오는 거래일)을 뺀 최근 거래일들의 1분봉. {"session": 오늘 분봉의 날짜 "MM/DD", "rows": [...]}
+    wait_all=False면 받아 둔 날 + 아직 없는 가장 가까운 하루만 받아 바로 돌려주고 "partial": True (나머지는 호출한 쪽이 뒤에서)"""
     key = f"minute_past:{code}:{days}"
     cached = _cache_get(key, 600)
     if cached:
         return cached
+    if not wait_all:
+        return await _minute_past_first(code, days)
     lock = _past_locks.setdefault(code, asyncio.Lock())
     async with lock:
         cached = _cache_get(key, 600)
@@ -1183,6 +1202,40 @@ async def fetch_minute_past(code: str, days: int = PAST_MINUTE_DAYS) -> dict:
         if rows:
             _cache_set(key, body)
         return body
+
+
+async def _past_sessions(code: str, days: int) -> tuple[str, list[str]]:
+    """(오늘 분봉의 거래일 YYYY-MM-DD, 그 앞 거래일들 YYYYMMDD 오래된 → 최근)"""
+    now = datetime.utcnow() + timedelta(hours=9)
+    today = now.strftime("%Y-%m-%d")
+    dates = [c["t"] for c in await fetch_daily_chart(code, "D", pages=1)]
+    if not dates:
+        return "", []
+    session = today if dates[-1] == today or (now.weekday() < 5 and now.strftime("%H%M") >= "0800") else dates[-1]
+    return session, [d.replace("-", "") for d in dates if d < session][-days:]
+
+
+async def _minute_past_first(code: str, days: int) -> dict:
+    """받아 둔 날은 그대로, 아직 없는 날 중 가장 가까운 하루만 받아 먼저 돌려준다 (처음 7초 → 1~2초)"""
+    session, past = await _past_sessions(code, days)
+    if not session:
+        return {"session": "", "rows": []}
+    saved = await asyncio.gather(*[_past_day_saved(code, d) for d in past])
+    missing = [d for d, rows in zip(past, saved) if rows is None]
+    if missing:
+        newest = missing[-1]
+        saved[past.index(newest)] = await _past_day_minutes(code, newest, KIS_MARKET)
+    # 가장 가까운 날부터 끊김 없이 이어진 날만 보낸다 (중간이 빈 채로 붙이지 않음)
+    keep: list[list[dict]] = []
+    for rows in reversed(saved):
+        if rows is None:
+            break
+        keep.insert(0, rows)
+    body = {"session": f"{session[5:7]}/{session[8:]}", "rows": [r for rows in keep for r in rows],
+            "partial": len(missing) > 1}
+    if not body["partial"] and body["rows"]:
+        _cache_set(f"minute_past:{code}:{days}", body)
+    return body
 
 
 async def fetch_orderbook(code: str) -> dict | None:

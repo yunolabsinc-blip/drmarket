@@ -68,7 +68,7 @@ function useChart(fetcher, key, period, kind = 'stock', prefetch = []) {
     let timer
     setState({ candles: chartCache.get(id) ?? null, error: false })
     const intraday = String(period).endsWith('m')
-    // 분봉 첫 조회는 최근 2시간만 먼저 받고(partial), 서버가 나머지를 채우는 동안 곧바로 다시 받는다
+    // 분봉 첫 조회는 최근 1시간만 먼저 받고(partial), 서버가 나머지를 채우는 동안 곧바로 다시 받는다
     let partial = false
     const load = (first) => {
       if (!first && !partial && document.visibilityState !== 'visible') return schedule()
@@ -107,17 +107,22 @@ function usePastMinutes(code, period) {
   useEffect(() => {
     setPast(pastCache.get(id) || null)
     if (!intraday) return
-    let alive = true
-    getStockChartPast(code, period)
+    let alive = true, timer, tries = 0
+    // 처음 보는 종목은 서버가 가까운 날만 먼저 보낸다(partial) → 나머지 날을 받는 동안 2초 뒤 다시
+    const load = () => getStockChartPast(code, period)
       .then((d) => {
+        if (d?.partial && alive && ++tries < 8) timer = setTimeout(load, 2000)
         if (!d?.candles?.length) return
-        pastCache.delete(id)
-        pastCache.set(id, d)
-        if (pastCache.size > 20) pastCache.delete(pastCache.keys().next().value)
+        if (!d.partial) {
+          pastCache.delete(id)
+          pastCache.set(id, d)
+          if (pastCache.size > 20) pastCache.delete(pastCache.keys().next().value)
+        }
         if (alive) setPast(d)
       })
       .catch(() => {})
-    return () => { alive = false }
+    load()
+    return () => { alive = false; clearTimeout(timer) }
   }, [id])
   return intraday ? past : null
 }
@@ -186,7 +191,7 @@ function DailyPrices({ candles, prevClose }) {
   )
 }
 
-// 1.5초 실시간 시세를 마지막 봉에 바로 반영 (분봉은 새 분이 되면 봉 추가) (다음 차트 조회 전까지 사이를 메움)
+// 1초 실시간 시세를 마지막 봉에 바로 반영 (분봉은 새 분이 되면 봉 추가) (다음 차트 조회 전까지 사이를 메움)
 const monday = (t) => {
   const d = new Date(`${t}T00:00:00`)
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
@@ -290,7 +295,7 @@ export default function Stock({ code }) {
   const past = usePastMinutes(code, period)
   const daily = useDaily(code)
 
-  useEffect(() => watch(code, true), [code, watch])   // 보고 있는 종목은 1.5초마다
+  useEffect(() => watch(code, true), [code, watch])   // 보고 있는 종목은 1초마다
   useEffect(() => {   // 차트가 먼저 뜨게 조금 뒤에 호가를 미리 받아 둠
     const t = setTimeout(() => prefetchOrderbook(code), 1200)
     return () => clearTimeout(t)
