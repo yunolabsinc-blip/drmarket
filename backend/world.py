@@ -20,7 +20,10 @@ ITEMS = [
     ("index", ".SOX", "필라델피아 반도체", "us"),
     ("exchange", "FX_USDKRW", "원/달러 환율", "fx"),
     ("energy", "CLcv1", "WTI", "fut"),
+    ("crypto", "KRW-BTC", "비트코인", "crypto"),
+    ("crypto", "KRW-ETH", "이더리움", "crypto"),
 ]
+UPBIT = "https://api.upbit.com/v1"
 _cache: dict = {"at": 0.0, "items": []}
 _hist: dict = {}   # 코드 → (받은 시각, 최근 10일 시세) — 미니 차트는 5분마다만
 _client: httpx.AsyncClient | None = None
@@ -48,7 +51,44 @@ async def _get(path: str):
     return r.json()
 
 
+async def _upbit(path: str):
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+    r = await _client.get(UPBIT + path)
+    r.raise_for_status()
+    return r.json()
+
+
+async def _crypto(code: str, name: str) -> dict | None:
+    """비트코인 원화 시세 (업비트 공개 시세, 24시간 거래 · 일봉은 오전 9시에 바뀜)"""
+    old = _hist.get(code)
+    try:
+        if old and time.time() - old[0] < 300:
+            ticker, days = await _upbit(f"/ticker?markets={code}"), old[1]
+        else:
+            ticker, days = await asyncio.gather(_upbit(f"/ticker?markets={code}"), _upbit(f"/candles/days?market={code}&count=10"))
+            _hist[code] = (time.time(), days)
+        t = ticker[0]
+    except Exception:
+        return None
+    value = _num(t.get("trade_price"))
+    if value <= 0:
+        return None
+    d = t.get("trade_date", "")   # 업비트 일봉은 UTC 날짜(오전 9시 KST 시작) — 차트 마지막 봉과 맞춤
+    return {
+        "code": code, "name": name, "market": "crypto", "source": "upbit",
+        "value": value, "change": _num(t.get("signed_change_price")),
+        "changeRate": round(_num(t.get("signed_change_rate")) * 100, 2),
+        "date": f"{d[4:6]}/{d[6:8]}" if len(d) == 8 else "",
+        "spark": [_num(r.get("trade_price")) for r in reversed(days if isinstance(days, list) else [])],
+        "open": True, "delay": "업비트", "periods": ["D", "W", "M"],
+    }
+
+
 async def _item(kind: str, code: str, name: str, market: str) -> dict | None:
+    if kind == "crypto":
+        return await _crypto(code, name)
     basic_path, hist_path = _paths(kind, code)
     old = _hist.get(code)
     try:
@@ -102,13 +142,22 @@ async def fetch_world_chart(code: str, period: str = "D") -> list[dict]:
     if not item:
         return []
     kind = item[0]
-    period = period if period in _CANDLE and kind in ("index", "futures") else "D"
+    if kind == "crypto":
+        period = period if period in ("D", "W", "M") else "D"
+    else:
+        period = period if period in _CANDLE and kind in ("index", "futures") else "D"
     key = (code, period)
     hit = _chart_cache.get(key)
-    if hit and time.time() - hit[0] < 300:
+    if hit and time.time() - hit[0] < (60 if kind == "crypto" else 300):
         return hit[1]
     try:
-        if kind in ("index", "futures"):
+        if kind == "crypto":
+            unit = {"D": "days", "W": "weeks", "M": "months"}[period]
+            rows = await _upbit(f"/candles/{unit}?market={code}&count=200")
+            candles = [{"t": r["candle_date_time_kst"][:10], "o": _num(r.get("opening_price")), "h": _num(r.get("high_price")),
+                        "l": _num(r.get("low_price")), "c": _num(r.get("trade_price")), "v": _num(r.get("candle_acc_trade_volume"))}
+                       for r in reversed(rows) if _num(r.get("trade_price")) > 0]
+        elif kind in ("index", "futures"):
             d = await _get(f"/chart/foreign/{kind}/{code}?periodType={_CANDLE[period]}")
             rows = [(r.get("localDate", ""), r) for r in d.get("priceInfos", [])]
             candles = [{"t": f"{t[:4]}-{t[4:6]}-{t[6:8]}", "o": _num(r.get("openPrice")), "h": _num(r.get("highPrice")),

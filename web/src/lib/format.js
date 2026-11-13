@@ -1,5 +1,9 @@
 export const fmtPrice = (n) => (n || n === 0 ? Math.round(n).toLocaleString('ko-KR') : '-')
 
+// 해외 카드 값: 비트코인은 원 단위 정수, 나머지는 소수 둘째 자리
+export const fmtWorld = (n, market) => (market === 'crypto' ? fmtPrice(n) : fmtIndex(n))
+export const fmtWorldChange = (c, market) => (c > 0 ? '+' : '') + (market === 'crypto' ? Math.round(c ?? 0).toLocaleString('ko-KR') : (c?.toFixed(2) ?? ''))
+
 export const fmtIndex = (n) =>
   n ? n.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'
 
@@ -65,7 +69,7 @@ export const fmtTime = (d) =>
 // 공휴일은 따로 반영하지 않음
 // 해외 지수·선물·야간선물 중 지금 움직이는 것이 있는지 (네이버가 알려 준 장 상태 우선)
 export const anyAbroadOpen = (global) =>
-  isMarketOpen('us') || isMarketOpen('kn') || !!global?.some((g) => g.open === true || (g.open == null && g.market !== 'fx' && isMarketOpen(g.market)))
+  isMarketOpen('us') || isMarketOpen('kn') || !!global?.some((g) => g.market !== 'crypto' && (g.open === true || (g.open == null && g.market !== 'fx' && isMarketOpen(g.market))))   // 비트코인(24시간)은 빼고
 
 export function isMarketOpen(market, now = new Date()) {
   const zone = market === 'us' ? 'America/New_York' : 'Asia/Seoul'

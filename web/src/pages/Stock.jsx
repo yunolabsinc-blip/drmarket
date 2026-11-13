@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { themesOfStock, useMarket } from '../lib/store'
 import { getDetail, getIndexChart, getLimitUps, getMarketGlobal, getMarketOverview, getNews, getStockChart, getStockChartPast, getStockEvents, getWorldChart } from '../lib/api'
-import { fmtChange, fmtIndex, fmtPrice, fmtRate, fmtVolume, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
+import { fmtChange, fmtIndex, fmtPrice, fmtWorld, fmtWorldChange, fmtRate, fmtVolume, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import Chart from '../components/Chart'
 import OrderBook, { prefetchOrderbook } from '../components/OrderBook'
@@ -128,7 +128,7 @@ function useDaily(code) {
   useEffect(() => {
     let alive = true
     setCandles(chartCache.get(id) || null)
-    getStockChart(code, 'D', true)
+    getStockChart(code, 'D')   // 시세 탭은 앞부분만 받는 빠른 조회(quick) 대신 전체를 받음
       .then((d) => { if (d?.candles?.length) { if (!d.partial) remember(id, d.candles); if (alive) setCandles(d.candles) } })
       .catch(() => alive && setCandles((c) => c || []))
     return () => { alive = false }
@@ -517,16 +517,16 @@ export function IndexPage({ code }) {
           <h1 className="stock-title">{name}</h1>
           {cur ? (
             <>
-              <b className="stock-price">{fmtIndex(cur.value)}</b>
+              <b className="stock-price">{fmtWorld(cur.value, cur.market)}</b>
               <span className={`stock-change ${tone(cur.changeRate)}`}>
-                {cur.change > 0 ? '+' : ''}{cur.change?.toFixed(2)} (<Rate value={cur.changeRate} />)
+                {fmtWorldChange(cur.change, cur.market)} (<Rate value={cur.changeRate} />)
               </span>
             </>
           ) : <div className="skeleton price-skel" />}
         </div>
         <div className="card chart-card">
           {chart.candles === null ? <div className="skeleton chart-skel" /> :
-            <Chart candles={world ? withWorldPrice(chart.candles, world, shown) : chart.candles} resetKey={`${code}:${shown}`} format={fmtIndex}
+            <Chart candles={world ? withWorldPrice(chart.candles, world, shown) : chart.candles} resetKey={`${code}:${shown}`} format={world?.market === 'crypto' ? fmtPrice : fmtIndex}
               current={cur?.value} />}
           {periods.length > 1 && <PeriodTabs periods={periods} value={shown} onChange={setPeriod} />}
         </div>

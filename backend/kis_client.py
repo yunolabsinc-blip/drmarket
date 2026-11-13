@@ -897,10 +897,16 @@ async def fetch_daily_chart(code: str, period: str = "D", is_index: bool = False
         if not is_index:
             params["FID_ORG_ADJ_PRC"] = "0"   # 수정주가
         data = await _get(path, params, tr)
-        return (data or {}).get("output2", []) or []
+        if data is None:   # 실패하면 한 번 더 (빈 구간과 실패를 구분 — 실패한 채로 이어 붙이면 중간이 비어 저장됨)
+            await asyncio.sleep(0.5)
+            data = await _get(path, params, tr)
+        return None if data is None else (data.get("output2", []) or [])
 
+    outs = await asyncio.gather(*[page(n) for n in range(pages)])
+    if any(out is None for out in outs):
+        return []   # 일부 구간이 빠진 차트는 주지도 저장하지도 않음 (앞서 저장된 차트가 그대로 쓰임)
     seen: dict[str, dict] = {}
-    for out in await asyncio.gather(*[page(n) for n in range(pages)]):
+    for out in outs:
         for o in out:
             d = o.get("stck_bsop_date")
             if not d or _num(o.get(f[3])) <= 0:

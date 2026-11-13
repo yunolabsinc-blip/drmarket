@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMarket } from '../lib/store'
 import { getCalendar, getMarketGlobal, getMarketNews, getMarketOverview } from '../lib/api'
-import { anyAbroadOpen, fmtIndex, fmtRate, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
+import { anyAbroadOpen, fmtRate, fmtWorld, fmtWorldChange, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import { Sparkline } from '../components/Chart'
 import MarketNews, { TOPICS } from '../components/NewsList'
@@ -94,9 +94,9 @@ function IndexBoard({ global }) {
             <span className="board-title"><i className={`board-light ${open ? 'on' : 'off'}`} aria-label={open ? '장 열림' : '장 닫힘'} />{i.name}</span>
             {i.date && <small>{i.date} {open ? '' : '종가'}</small>}
           </span>
-          <b className="board-value">{fmtIndex(i.value)}</b>
+          <b className="board-value">{fmtWorld(i.value, i.market)}</b>
           <span className={`board-change ${tone(i.changeRate)}`}>
-            {i.change > 0 ? '+' : ''}{i.change?.toFixed(2)} {fmtRate(i.changeRate)}
+            {fmtWorldChange(i.change, i.market)} {fmtRate(i.changeRate)}
           </span>
           {i.spark && <span className="board-spark"><Sparkline values={i.spark} width={56} height={22} /></span>}
         </button>
