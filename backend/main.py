@@ -540,10 +540,13 @@ async def _warm_popular(rows: list[dict]):
     if time.time() - _warm_at["t"] < 600:
         return
     _warm_at["t"] = time.time()
+    kis.low_priority.set(True)   # 사용자 요청(차트·시세)이 기다리면 양보
     for s in rows[:8]:
         code = s.get("code")
         if not code or not kis.APP_KEY:
             continue
+        if kis.price_poll_hint()["all"] > 2000:   # 증권사 한도에 걸린 직후면 이번 차례는 그만
+            break
         try:
             await kis.fetch_minute_chart(code)
             await kis.fetch_minute_past(code)
