@@ -1164,8 +1164,8 @@ async def _past_day_minutes(code: str, date: str, mkt: str) -> list[dict]:
                 "v": _num(o.get("cntg_vol"), int),
             }
     rows = [seen[k] for k in sorted(seen)]
-    # 넥스트레이드에 없는 종목은 통합 분봉이 거래량 0으로 오므로 거래소 분봉으로
-    if mkt != "J" and rows and not any(r["v"] for r in rows if "09:30" <= r["t"][-5:] <= "15:00"):
+    # 넥스트레이드에 없는 종목은 통합 분봉이 비거나 거래량 0으로 오므로 거래소 분봉으로
+    if mkt != "J" and not any(r["v"] for r in rows if "09:30" <= r["t"][-5:] <= "15:00"):
         return await _past_day_minutes(code, date, "J")
     if len(rows) >= 30 and all(results):   # 빈 구간이 있으면 저장하지 않고 다음에 다시
         _cache_set(rkey, rows)

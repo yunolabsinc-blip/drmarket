@@ -168,7 +168,8 @@ async def fetch_world_chart(code: str, period: str = "D") -> list[dict]:
             unit = {"D": "days", "W": "weeks", "M": "months"}[period]
             rows = await _upbit(f"/candles/{unit}?market={code}&count=200")
             candles = [{"t": r["candle_date_time_kst"][:10], "o": _num(r.get("opening_price")), "h": _num(r.get("high_price")),
-                        "l": _num(r.get("low_price")), "c": _num(r.get("trade_price")), "v": _num(r.get("candle_acc_trade_volume"))}
+                        "l": _num(r.get("low_price")), "c": _num(r.get("trade_price")), "v": _num(r.get("candle_acc_trade_volume")),
+                        "a": _num(r.get("candle_acc_trade_price"))}
                        for r in reversed(rows) if _num(r.get("trade_price")) > 0]
         elif kind in ("index", "futures"):
             d = await _get(f"/chart/foreign/{kind}/{code}?periodType={_CANDLE[period]}")

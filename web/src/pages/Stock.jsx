@@ -164,7 +164,10 @@ function withTodayValue(candles, value) {
 }
 
 // 오늘 줄은 위 현재가와 같은 기준(전일 종가 prevClose) 으로 등락을 계산
-function DailyPrices({ candles, prevClose }) {
+// 코인 거래량: 0.5 BTC처럼 소수
+const fmtCoinVolume = (unit) => (n) => (n ? `${n.toLocaleString('ko-KR', { maximumFractionDigits: n >= 100 ? 0 : 2 })} ${unit}` : '-')
+
+function DailyPrices({ candles, prevClose, volume = fmtVolume }) {
   const [count, setCount] = useState(30)
   if (candles === null) return <div className="skeleton chart-skel" />
   if (!candles.length) return <p className="muted daily-empty">일별 시세를 불러오지 못했습니다</p>
@@ -183,7 +186,7 @@ function DailyPrices({ candles, prevClose }) {
           <b className={tone(r.diff)}>{fmtPrice(r.c)}</b>
           <span className={tone(r.diff)}>{r.diff == null ? '-' : fmtChange(r.diff)}</span>
           <span className={tone(r.diff)}>{r.rate == null ? '-' : fmtRate(r.rate)}</span>
-          <span className="muted">{fmtVolume(r.v)}<br />{fmtWonShort(r.a)}</span>
+          <span className="muted">{volume(r.v)}<br />{fmtWonShort(r.a)}</span>
         </div>
       ))}
       {count < candles.length && <button className="more daily-more" onClick={() => setCount((n) => n + 30)}>더 보기</button>}
@@ -526,6 +529,17 @@ export function IndexPage({ code }) {
   const chart = useChart(domestic ? getIndexChart : getWorldChart, code, shown, domestic ? 'index' : 'world',
     domestic ? ['D', 'W', 'M', 'Y'] : periods.map((p) => p.id).filter((p) => p !== 'min'))
   const name = INDEX_NAMES[code] || world?.name || '지수'
+  const crypto = world?.market === 'crypto'
+  const [view, setView] = useState('chart')
+  const [daily, setDaily] = useState(null)   // 코인 일별 시세 (시세 탭)
+  useEffect(() => {
+    if (!crypto || view !== 'daily') return
+    let alive = true, timer
+    const load = () => getWorldChart(code, 'D').then((d) => alive && setDaily(d?.candles || [])).catch(() => alive && setDaily((v) => v || []))
+      .finally(() => { if (alive) timer = setTimeout(load, 60000) })
+    load()
+    return () => { alive = false; clearTimeout(timer) }
+  }, [code, crypto, view])
   const cur = domestic ? indices.find((i) => i.name === name) : world
   return (
     <>
@@ -543,12 +557,24 @@ export function IndexPage({ code }) {
             </>
           ) : <div className="skeleton price-skel" />}
         </div>
+        {crypto && (
+          <div className="segmented">
+            <button className={view === 'chart' ? 'on' : ''} onClick={() => setView('chart')}>차트</button>
+            <button className={view === 'daily' ? 'on' : ''} onClick={() => setView('daily')}>시세</button>
+          </div>
+        )}
+        {crypto && view === 'daily' ? (
+          <div className="card daily">
+            <DailyPrices candles={daily && withWorldPrice(daily, world, 'D')} volume={fmtCoinVolume(code.split('-')[1] || '')} />
+          </div>
+        ) : (
         <div className="card chart-card">
           {chart.candles === null ? <div className="skeleton chart-skel" /> :
             <Chart candles={world ? withWorldPrice(chart.candles, world, shown) : chart.candles} resetKey={`${code}:${shown}`} format={world?.market === 'crypto' ? fmtPrice : fmtIndex}
               current={cur?.value} initialCount={shown.endsWith('m') ? 120 : 80} />}
           {periods.length > 1 && <PeriodTabs periods={periods} value={shown} onChange={setPeriod} />}
         </div>
+        )}
         <Disclaimer />
       </main>
     </>
