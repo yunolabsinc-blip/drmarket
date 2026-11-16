@@ -994,6 +994,29 @@ async def fetch_minute_chart(code: str, quick: bool = False) -> list[dict]:
         return await _fetch_minute(code, key, quick)
 
 
+async def _no_nxt(code: str) -> bool:
+    """넥스트레이드에서 거래되지 않는 종목으로 확인된 적이 있는지 (공유 저장소, 7일)"""
+    hit = _cache_get(f"nonxt:{code}", 600)
+    if hit is not None:
+        return hit["v"]
+    v = bool(await _redis("GET", f"drmarket:nonxt:{code}"))
+    _cache_set(f"nonxt:{code}", {"v": v})
+    return v
+
+
+async def _mark_no_nxt(code: str):
+    _cache_set(f"nonxt:{code}", {"v": True})
+    await _redis("SET", f"drmarket:nonxt:{code}", "1", "EX", str(7 * 86400))
+
+
+def _premarket_dead(rows_by_hour: dict, now_hour: str) -> bool:
+    """정규장이 시작됐는데 프리마켓(08:00~08:50) 통합 분봉이 전부 거래량 0 → 넥스트레이드 미거래 종목으로 본다"""
+    if now_hour < "090000":
+        return False
+    pre = [v for h, v in rows_by_hour.items() if "080000" <= h < "085000"]
+    return len(pre) >= 30 and not any(pre)
+
+
 async def _fetch_minute(code: str, key: str, quick: bool, mkt: str | None = None) -> list[dict]:
     # 통합 시세는 넥스트레이드 프리마켓(08:00)부터 애프터마켓(20:00)까지.
     # 넥스트레이드에 없는 종목(신규 상장주 등)은 통합 분봉이 하루 종일 기준가·거래량 0으로 오므로 거래소(J) 분봉으로
@@ -1013,10 +1036,16 @@ async def _fetch_minute(code: str, key: str, quick: bool, mkt: str | None = None
                 base = json.loads(raw)
             except Exception:
                 base = None
+    if mkt is None and KIS_MARKET != "J" and (not base or base.get("mkt", KIS_MARKET) != "J") and await _no_nxt(code):
+        base, mkt = None, "J"   # 넥스트레이드 미거래로 확인된 종목은 처음부터 거래소 분봉
     if base and base.get("mkt", KIS_MARKET) != "J":
         # 받아 둔 통합 분봉의 정규장 구간이 통째로 거래량 0이면 넥스트레이드 미거래 종목 → 거래소 분봉으로
-        regular = [r for h, r in base.get("seen", {}).items() if "093000" <= h <= "153000"]
+        seen0 = base.get("seen", {})
+        regular = [r for h, r in seen0.items() if "093000" <= h <= "153000"]
         if len(regular) >= 30 and not any(r["v"] for r in regular):
+            await _mark_no_nxt(code)
+            base, mkt = None, "J"
+        elif _premarket_dead({h: r["v"] for h, r in seen0.items()}, now.strftime("%H%M%S")):
             base, mkt = None, "J"
     mkt = mkt or (base or {}).get("mkt") or KIS_MARKET
     day_start, day_end = ("080000", "200000") if mkt != "J" else ("090000", "153000")
@@ -1063,7 +1092,12 @@ async def _fetch_minute(code: str, key: str, quick: bool, mkt: str | None = None
         # 정규장(09:00~15:30) 안의 30분 구간이 통째로 거래량 0이면 넥스트레이드 미거래 종목 → 거래소 분봉으로 다시
         for e, out in zip(ends, results):
             if "092900" <= e <= "153000" and out and not any(_num(o.get("cntg_vol"), int) for o in out):
+                await _mark_no_nxt(code)
                 return await _fetch_minute(code, key, quick, "J")
+        vols = {o["stck_cntg_hour"]: _num(o.get("cntg_vol"), int) for out in results for o in out
+                if o.get("stck_cntg_hour", "") >= day_start}
+        if _premarket_dead(vols, now.strftime("%H%M%S")):
+            return await _fetch_minute(code, key, quick, "J")
 
     seen: dict[str, dict] = dict((base or {}).get("seen", {}))
     for out in results:
@@ -1166,6 +1200,8 @@ async def _past_day_minutes(code: str, date: str, mkt: str) -> list[dict]:
     rows = [seen[k] for k in sorted(seen)]
     # 넥스트레이드에 없는 종목은 통합 분봉이 비거나 거래량 0으로 오므로 거래소 분봉으로
     if mkt != "J" and not any(r["v"] for r in rows if "09:30" <= r["t"][-5:] <= "15:00"):
+        if rows:
+            await _mark_no_nxt(code)
         return await _past_day_minutes(code, date, "J")
     if len(rows) >= 30 and all(results):   # 빈 구간이 있으면 저장하지 않고 다음에 다시
         _cache_set(rkey, rows)

@@ -102,9 +102,12 @@ async def _sweep() -> dict | None:
             await _quote_chunk(chunk, quotes)
 
     await asyncio.gather(*[one(stocks[i:i + 30]) for i in range(0, len(stocks), 30)])
+    if len(quotes) < len(stocks) * 0.5:   # 시세를 절반도 못 받으면 실패로 보고 직전 결과 유지
+        logger.warning("[RANK] 시세 %d/%d 만 받음", len(quotes), len(stocks))
+        return None
+    # 넥스트레이드 프리·애프터마켓엔 넥스트레이드 종목만 거래되므로 오늘 거래된 종목만으로 순위를 매긴다
     rows = [q for q in quotes.values() if q["volume"] > 0]
-    if len(rows) < len(stocks) * 0.5:   # 절반 넘게 비면 실패로 보고 직전 결과 유지
-        logger.warning("[RANK] 시세 %d/%d 만 받음", len(rows), len(stocks))
+    if not rows:   # 장 시작 전(아직 거래 없음)이면 직전 결과 유지
         return None
 
     def top(key, reverse=True, cond=None):
