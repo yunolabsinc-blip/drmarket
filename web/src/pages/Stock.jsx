@@ -4,7 +4,7 @@ import { getDetail, getIndexChart, getLimitUps, getMarketGlobal, getMarketOvervi
 import { fmtChange, fmtIndex, fmtPrice, fmtWorld, fmtWorldChange, fmtRate, fmtVolume, fmtWonShort, isMarketOpen, marketPhase, tone } from '../lib/format'
 import { go } from '../lib/router'
 import Chart from '../components/Chart'
-import OrderBook, { prefetchOrderbook } from '../components/OrderBook'
+import OrderBook, { useOrderbook } from '../components/OrderBook'
 import { Disclaimer, Empty, ExternalIcon, Rate, StarIcon, SubBar } from '../components/ui'
 import { NewsItems } from '../components/NewsList'
 import { EventRows } from '../components/Calendar'
@@ -299,10 +299,7 @@ export default function Stock({ code }) {
   const daily = useDaily(code)
 
   useEffect(() => watch(code, true), [code, watch])   // 보고 있는 종목은 1초마다
-  useEffect(() => {   // 차트가 먼저 뜨게 조금 뒤에 호가를 미리 받아 둠
-    const t = setTimeout(() => prefetchOrderbook(code), 1200)
-    return () => clearTimeout(t)
-  }, [code])
+  const { book, failed: bookFailed } = useOrderbook(code)
   useEffect(() => {
     let alive = true
     let timer
@@ -338,9 +335,12 @@ export default function Stock({ code }) {
   }
 
   // 목록 시세(5초 갱신)가 있으면 우선, 없으면 상세 조회값
-  const price = live?.price || detail?.price
-  const rate = live?.change_rate ?? detail?.change_rate
-  const change = live?.change ?? detail?.change
+  // 장중에는 호가와 같은 응답의 현재가를 우선 → 현재가·차트·호가가 같이 움직인다
+  const prevBase = detail?.prev_close || (live?.price && live.price - (live.change || 0))
+  const bookPrice = marketPhase().key === 'open' && book?.price > 0 && !book.stale && prevBase ? book.price : 0
+  const price = bookPrice || live?.price || detail?.price
+  const rate = bookPrice ? ((bookPrice - prevBase) / prevBase) * 100 : live?.change_rate ?? detail?.change_rate
+  const change = bookPrice ? bookPrice - prevBase : live?.change ?? detail?.change
   const fav = favorites.includes(code)
   const themes = themesOfStock(code)
   const d = detail
@@ -374,18 +374,18 @@ export default function Stock({ code }) {
         {view === 'chart' ? (
           <div className="card chart-card">
             {chart.candles === null ? <div className="skeleton chart-skel" /> :
-              <Chart candles={withPast(past, withLivePrice(chart.candles, live?.price, period, detail))} resetKey={`${code}:${period}`}
+              <Chart candles={withPast(past, withLivePrice(chart.candles, price, period, detail))} resetKey={`${code}:${period}`}
                 baseline={intraday ? d?.prev_close : undefined} initialCount={intraday ? 120 : 80} format={fmtPrice} current={price}
                 dayLabel={past?.session} />}
             <PeriodTabs periods={MAIN_PERIODS} value={period} onChange={setPeriod} />
           </div>
         ) : view === 'daily' ? (
           <div className="card daily">
-            <DailyPrices candles={daily && withTodayValue(withLivePrice(daily, live?.price, 'D', detail), live?.trading_value || d?.trading_value)} prevClose={d?.prev_close} />
+            <DailyPrices candles={daily && withTodayValue(withLivePrice(daily, price, 'D', detail), live?.trading_value || d?.trading_value)} prevClose={d?.prev_close} />
           </div>
         ) : (
           <div className="card">
-            <OrderBook code={code} prevClose={d?.prev_close || (price && price - (change || 0))} />
+            <OrderBook book={book} failed={bookFailed} prevClose={d?.prev_close || (price && price - (change || 0))} />
           </div>
         )}
 

@@ -124,7 +124,7 @@ def poll_hint() -> int:
         return 8000
     n = len(_book_watch)
     # 증권사 한도(초당 20회) 중 순위 계산이 ~6회를 쓰므로, 보는 종목이 적을 때만 1초
-    return 1000 if n <= 4 else 1500 if n <= 8 else 3000 if n <= 20 else 5000 if n <= 40 else 8000
+    return 700 if n <= 3 else 1000 if n <= 6 else 1500 if n <= 10 else 3000 if n <= 20 else 5000 if n <= 40 else 8000
 
 
 def price_poll_hint() -> dict:
@@ -1305,6 +1305,7 @@ async def fetch_orderbook(code: str) -> dict | None:
         "total_ask": _num(o.get("total_askp_rsqn"), int),
         "total_bid": _num(o.get("total_bidp_rsqn"), int),
         "expected_price": _num(exp.get("antc_cnpr"), int),
+        "price": _num(exp.get("stck_prpr"), int),   # 호가와 같은 순간의 현재가 (화면 현재가·차트 마지막 봉에 같이 씀)
     }
     _cache_set(f"book:{code}", result)
     _resp_cache[f"book_last:{code}"] = (time.monotonic(), result)

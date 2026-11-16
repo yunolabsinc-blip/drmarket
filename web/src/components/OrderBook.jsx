@@ -10,15 +10,8 @@ const remember = (code, d) => {
   if (books.size > 30) books.delete(books.keys().next().value)
 }
 
-// 종목 화면을 열 때 미리 받아 둠 (차트를 보는 동안)
-export function prefetchOrderbook(code) {
-  const hit = books.get(code)
-  if (hit && Date.now() - hit.at < 5000) return
-  getOrderbook(code).then((d) => remember(code, d)).catch(() => {})
-}
-
-// 10단계 호가: 위쪽 매도(파랑), 아래쪽 매수(빨강), 잔량 막대
-export default function OrderBook({ code, prevClose }) {
+// 종목 화면 전체가 쓰는 호가 (차트 탭에서도 계속 받음) — 호가·현재가·차트 마지막 봉이 같은 응답에서 나와 같이 움직인다
+export function useOrderbook(code) {
   const [book, setBook] = useState(() => books.get(code)?.d || null)
   const [failed, setFailed] = useState(false)
   const bookRef = useRef(book)
@@ -26,6 +19,7 @@ export default function OrderBook({ code, prevClose }) {
   useEffect(() => {
     let alive = true
     let timer
+    setBook(books.get(code)?.d || null)
     const load = () =>
       getOrderbook(code)
         .then((d) => { remember(code, d); if (alive) { bookRef.current = d; setBook(d); setFailed(false) } })
@@ -33,10 +27,10 @@ export default function OrderBook({ code, prevClose }) {
         .finally(() => {
           // 서버가 부하에 맞춰 알려주는 간격(1~8초)을 따른다. 화면이 안 보이면 30초
           if (!alive) return
-          const next = document.visibilityState !== 'visible' ? 30000 : marketPhase().key === 'open' ? (bookRef.current?.next_ms || 1500) : 30000
+          const next = document.visibilityState !== 'visible' ? 30000 : marketPhase().key === 'open' ? (bookRef.current?.next_ms || 1000) : 30000
           timer = setTimeout(load, next)
         })
-    load()
+    timer = setTimeout(load, books.has(code) ? 0 : 300)   // 처음엔 차트가 먼저 뜨게 아주 잠깐 뒤에
     // 다른 앱에 갔다 돌아오면 30초를 기다리지 않고 바로 갱신
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || !alive) return
@@ -46,6 +40,11 @@ export default function OrderBook({ code, prevClose }) {
     document.addEventListener('visibilitychange', onVisible)
     return () => { alive = false; clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
   }, [code])
+  return { book, failed }
+}
+
+// 10단계 호가: 위쪽 매도(파랑), 아래쪽 매수(빨강), 잔량 막대
+export default function OrderBook({ book, failed, prevClose }) {
 
   if (!book) {
     return failed
