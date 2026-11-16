@@ -387,7 +387,7 @@ async def get_stock_chart_past(background: BackgroundTasks, code: str, period: s
     past = await kis.fetch_minute_past(code, wait_all=False)
     body = {"period": period, "session": past["session"], "candles": kis.aggregate_minutes(past["rows"], n)}
     if past.get("partial"):   # 가까운 날만 먼저 — 나머지 날은 응답 뒤에 받아 두고 앱이 곧 다시 묻는다
-        background.add_task(kis.fetch_minute_past, code)
+        background.add_task(kis.fetch_minute_past_bg, code)
         return JSONResponse({**body, "partial": True}, headers={"Cache-Control": "no-store"})
     return _cdn(body, 300, 3600) if past["rows"] else JSONResponse(body, headers={"Cache-Control": "no-store"})
 

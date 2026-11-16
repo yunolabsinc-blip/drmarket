@@ -111,7 +111,14 @@ _resp_cache: dict[str, tuple[float, Any]] = {}
 # 최근 KIS 오류 (디버그용, /api/token/status 에 노출)
 last_errors: dict[str, str] = {}
 # 부하 감지: 최근 호출 한도 초과 시각, 최근 10초간 호가를 본 종목들
-_load = {"rate_limited_at": float("-inf")}   # 0이면 막 켜진 서버(monotonic이 작음)를 한도 초과 직후로 오인
+_load = {"rate_limited_at": float("-inf"), "hits": []}   # 0이면 막 켜진 서버(monotonic이 작음)를 한도 초과 직후로 오인
+
+
+def _rate_limited() -> bool:
+    """사용자 요청이 최근 10초에 3번 이상 한도에 걸렸을 때만 '혼잡' — 순간적으로 한두 번 걸린 것으로는 늦추지 않는다"""
+    now = time.monotonic()
+    _load["hits"] = [t for t in _load["hits"] if now - t < 10]
+    return len(_load["hits"]) >= 3
 _book_watch: dict[str, float] = {}
 
 
@@ -120,17 +127,17 @@ def poll_hint() -> int:
     now = time.monotonic()
     for c in [c for c, t in _book_watch.items() if now - t > 10]:
         _book_watch.pop(c, None)
-    if now - _load["rate_limited_at"] < 30:
-        return 8000
+    if _rate_limited():
+        return 2000
     n = len(_book_watch)
     # 증권사 한도(초당 20회) 중 순위 계산이 ~6회를 쓰므로, 보는 종목이 적을 때만 1초
     return 700 if n <= 3 else 1000 if n <= 6 else 1500 if n <= 10 else 3000 if n <= 20 else 5000 if n <= 40 else 8000
 
 
 def price_poll_hint() -> dict:
-    """시세 갱신 간격(ms) 권장값: 평소 전체 2초·보는 종목 1초, 증권사 한도 초과가 났으면 30초 동안 늦춘다"""
-    if time.monotonic() - _load["rate_limited_at"] < 30:
-        return {"all": 5000, "fast": 3000}
+    """시세 갱신 간격(ms) 권장값: 평소 전체 2초·보는 종목 1초, 한도에 자주 걸리는 동안만 조금 늦춘다"""
+    if _rate_limited():
+        return {"all": 3000, "fast": 2000}
     return {"all": 2000, "fast": 1000}
 
 
@@ -354,6 +361,8 @@ async def _get(path: str, params: dict, tr_id: str) -> dict | None:
         # EGW00201 = 초당 거래건수 초과 → 잠깐 쉬고 한 번 더
         if data.get("msg_cd") == "EGW00201":
             _load["rate_limited_at"] = time.monotonic()
+            if not low_priority.get():   # 뒤에서 도는 대량 조회가 걸린 것은 화면 갱신 속도에 반영하지 않음
+                _load["hits"].append(time.monotonic())
             if attempt == 0:
                 await asyncio.sleep(1)
                 continue
@@ -1238,6 +1247,15 @@ async def fetch_minute_past(code: str, days: int = PAST_MINUTE_DAYS, wait_all: b
         if rows:
             _cache_set(key, body)
         return body
+
+
+async def fetch_minute_past_bg(code: str):
+    """응답 뒤에 나머지 날을 받는 작업 — 사용자 요청에 양보"""
+    token = low_priority.set(True)
+    try:
+        await fetch_minute_past(code)
+    finally:
+        low_priority.reset(token)
 
 
 async def _past_sessions(code: str, days: int) -> tuple[str, list[str]]:
