@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { useMarket } from '../lib/store'
 import { getRanking } from '../lib/api'
 import { go } from '../lib/router'
@@ -12,7 +12,7 @@ const TYPES = [
   { id: 'down', label: '하락률' },
 ]
 
-export function useRanking(type) {
+export function useRanking(type, seen = '') {
   const { stockMap, stockList, prices, watch } = useMarket()
   const saved = () => (getRanking.peek(type)?.ranking || []).filter((r) => r.source === 'live')
   const [raw, setRaw] = useState(saved)
@@ -48,8 +48,9 @@ export function useRanking(type) {
   const filtered = stockList.length
     ? raw.filter((r) => stockMap[r.code]).map((r) => ({ ...r, name: stockMap[r.code].name }))
     : raw
-  // 위쪽 30종목은 5초 시세 조회에 포함시켜 더 자주 갱신 (전체 순위는 서버가 15초마다 다시 매김)
-  const top = filtered.slice(0, 30).map((r) => r.code).join(',')
+  // 위쪽 30종목과 지금 화면에 보이는 줄은 실시간 시세 조회에 넣어 2초마다 갱신
+  // (전체 순위는 서버가 15초마다 다시 매기므로, 그대로 두면 아래쪽 줄은 20~30초 늦은 값이 보였다)
+  const top = [...new Set([...filtered.slice(0, 30).map((r) => r.code), ...seen.split(',').filter(Boolean)])].join(',')
   useEffect(() => {
     const offs = top.split(',').filter(Boolean).map((c) => watch(c))
     return () => offs.forEach((off) => off())
@@ -95,7 +96,9 @@ const RankRow = memo(function RankRow({ code, name, price, rate, sub, rank, flas
 
 export default function Rank() {
   const [type, setType] = useState(() => sessionStorage.getItem('drm.rank') || 'amount')
-  const { rows, loading, count } = useRanking(type)
+  const [seen, setSeen] = useState('')
+  const listRef = useRef(null)
+  const { rows, loading, count } = useRanking(type, seen)
   const { flash, favorites } = useMarket()
   // 첫 화면은 위 30줄만 바로 그리고 나머지는 다음 프레임에 (탭을 누르자마자 반응하게)
   const [limit, setLimit] = useState(30)
@@ -104,6 +107,34 @@ export default function Rank() {
     const id = setTimeout(() => setLimit(100), 30)
     return () => clearTimeout(id)
   }, [type])
+  // 화면에 보이는 줄의 종목코드를 모아 실시간 시세 조회에 넣음 (스크롤하면 바뀜)
+  const order = rows.slice(0, limit).map((r) => r.code).join(',')
+  useEffect(() => {
+    const box = listRef.current
+    if (!box) return
+    let t = null
+    const check = () => {
+      t = null
+      const h = window.innerHeight
+      const on = []
+      for (const el of box.querySelectorAll('.stock-row[data-stock]')) {
+        const r = el.getBoundingClientRect()
+        if (r.bottom > 0 && r.top < h) on.push(el.dataset.stock)
+      }
+      const next = on.sort().join(',')
+      setSeen((cur) => (cur === next ? cur : next))
+    }
+    const later = () => { if (!t) t = setTimeout(check, 250) }
+    check()
+    window.addEventListener('scroll', later, { passive: true, capture: true })
+    window.addEventListener('resize', later)
+    return () => {
+      window.removeEventListener('scroll', later, { capture: true })
+      window.removeEventListener('resize', later)
+      clearTimeout(t)
+    }
+  }, [order, loading])
+
   // 다른 순위 탭도 누르자마자 보이게 미리 받아 둠
   useEffect(() => {
     const t = setTimeout(() => TYPES.forEach((x) => x.id !== type && getRanking(x.id).catch(() => {})), 600)
@@ -129,7 +160,7 @@ export default function Rank() {
       {loading && !rows.length ? <Skeleton rows={10} /> : !rows.length ? (
         <div className="card muted-box">순위 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div>
       ) : (
-        <div className="card list">
+        <div className="card list" ref={listRef}>
           {rows.slice(0, limit).map((s, i) => (
             <RankRow key={s.code} code={s.code} name={s.name} price={s.price} rate={s.change_rate} rank={i + 1}
               prev={s.prev_close} open={s.open} high={s.high} low={s.low}
