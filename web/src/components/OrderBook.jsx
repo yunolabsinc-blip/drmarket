@@ -103,11 +103,18 @@ export default function OrderBook({ book, failed, prevClose, price, detail }) {
   }
 
   const row = (side, level, extra) => {
+    // 호가 줄 안에 색으로: 고가(빨강)·저가(파랑)·시가(회색) 배지, 상·하한가 배지, 오늘 움직인 범위(저가~고가)는 왼쪽 띠
+    const p = level.price
     const tags = []
-    if (level.price === high && high) tags.push(<i key="h" className="ob-tag up">고</i>)
-    if (level.price === low && low) tags.push(<i key="l" className="ob-tag down">저</i>)
+    if (p === high && high) tags.push(<i key="h" className="ob-tag ob-tag-high">고</i>)
+    if (p === low && low) tags.push(<i key="l" className="ob-tag ob-tag-low">저</i>)
+    if (p === open && open) tags.push(<i key="o" className="ob-tag ob-tag-open">시</i>)
+    if (p === detail?.upper_limit) tags.push(<i key="u" className="ob-tag ob-tag-high">상</i>)
+    if (p === detail?.lower_limit) tags.push(<i key="d" className="ob-tag ob-tag-low">하</i>)
+    const inRange = low && high && p >= low && p <= high
+    const cls = [`ob-row ob-${side}`, p === now && 'ob-now', p === high && high && 'ob-at-high', p === low && low && 'ob-at-low', inRange && 'ob-in-range', vi && p === now && 'ob-vi-now'].filter(Boolean).join(' ')
     return (
-      <div key={`${side}${level.price}`} className={`ob-row ob-${side}${level.price === now ? ' ob-now' : ''}`}>
+      <div key={`${side}${level.price}`} className={cls}>
         <span className="ob-qty ob-left">
           {side === 'ask' ? <><i style={{ width: `${(level.qty / max) * 100}%` }} /><em>{level.qty.toLocaleString()}</em></> : info(extra)}
         </span>

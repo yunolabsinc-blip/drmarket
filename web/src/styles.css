@@ -305,7 +305,19 @@ b { font-weight: 650; }
 .ob-vi { color: #fff; background: #f08c00; border-radius: 4px; padding: 1px 6px; font-size: 11px; }
 .ob-vi-bar { margin: 0 14px 8px; padding: 7px 10px; border-radius: 8px; background: #fff4e0; color: #b35c00; font-size: 12.5px; font-weight: 650; text-align: center; }
 .ob-now .ob-price { box-shadow: inset 0 0 0 1.5px var(--text); border-radius: 3px; }
-.ob-tag { font-style: normal; font-size: 10px; font-weight: 700; line-height: 1; padding: 2px 3px; border-radius: 3px; border: 1px solid currentColor; }
+.ob-price { position: relative; }
+.ob-tag { font-style: normal; font-size: 10px; font-weight: 700; line-height: 1; padding: 3px 4px; border-radius: 4px; color: #fff; }
+.ob-tag-high { background: var(--up); }
+.ob-tag-low { background: var(--down); }
+.ob-tag-open { background: #8b95a1; }
+/* 오늘 저가~고가 범위: 가격칸 왼쪽 띠 (고가 쪽 빨강, 저가 쪽 파랑으로 끝) */
+.ob-in-range .ob-price::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #c9cfd6; }
+.ob-at-high .ob-price::before { background: var(--up); top: 4px; border-radius: 2px 2px 0 0; }
+.ob-at-low .ob-price::before { background: var(--down); bottom: 4px; border-radius: 0 0 2px 2px; }
+.ob-at-high.ob-at-low .ob-price::before { border-radius: 2px; }
+.ob-at-high .ob-price { background: color-mix(in srgb, var(--up) 12%, transparent) !important; }
+.ob-at-low .ob-price { background: color-mix(in srgb, var(--down) 12%, transparent) !important; }
+.ob-vi-now .ob-price { box-shadow: inset 0 0 0 2px #f08c00 !important; }
 
 /* ───────── 실시간 테마 타일 (2열) ───────── */
 .sort-toggle { display: inline-flex; gap: 6px; margin-bottom: 12px; }
