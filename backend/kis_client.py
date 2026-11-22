@@ -1324,6 +1324,10 @@ async def fetch_orderbook(code: str) -> dict | None:
         "total_bid": _num(o.get("total_bidp_rsqn"), int),
         "expected_price": _num(exp.get("antc_cnpr"), int),
         "price": _num(exp.get("stck_prpr"), int),   # 호가와 같은 순간의 현재가 (화면 현재가·차트 마지막 봉에 같이 씀)
+        "open": _num(exp.get("stck_oprc"), int),
+        "high": _num(exp.get("stck_hgpr"), int),
+        "low": _num(exp.get("stck_lwpr"), int),
+        "vi_code": (exp.get("vi_cls_code") or "").strip(),   # 변동성완화장치: N·0·빈값 = 없음
     }
     _cache_set(f"book:{code}", result)
     _resp_cache[f"book_last:{code}"] = (time.monotonic(), result)

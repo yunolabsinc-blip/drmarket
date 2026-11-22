@@ -385,7 +385,7 @@ export default function Stock({ code }) {
           </div>
         ) : (
           <div className="card">
-            <OrderBook book={book} failed={bookFailed} prevClose={d?.prev_close || (price && price - (change || 0))} />
+            <OrderBook book={book} failed={bookFailed} prevClose={d?.prev_close || (price && price - (change || 0))} price={price} detail={d} />
           </div>
         )}
 

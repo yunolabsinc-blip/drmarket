@@ -43,8 +43,12 @@ export function useOrderbook(code) {
   return { book, failed }
 }
 
+// VI(변동성완화장치) 구분 코드: 없음이면 N·0·빈값
+export const viOn = (code) => !!code && !['N', '0', '00'].includes(code)
+
 // 10단계 호가: 위쪽 매도(파랑), 아래쪽 매수(빨강), 잔량 막대
-export default function OrderBook({ book, failed, prevClose }) {
+// 매도 쪽 오른칸·매수 쪽 왼칸(비어 있는 자리)에 현재가·시가·고가·저가·상하한·VI를 보여 준다
+export default function OrderBook({ book, failed, prevClose, price, detail }) {
 
   if (!book) {
     return failed
@@ -58,26 +62,73 @@ export default function OrderBook({ book, failed, prevClose }) {
   const t = book.time
   const time = t && t.length === 6 ? `${t.slice(0, 2)}:${t.slice(2, 4)}:${t.slice(4)}` : ''
 
-  const row = (side, level) => (
-    <div key={`${side}${level.price}`} className={`ob-row ob-${side}`}>
-      <span className="ob-qty ob-left">
-        {side === 'ask' && <><i style={{ width: `${(level.qty / max) * 100}%` }} /><em>{level.qty.toLocaleString()}</em></>}
+  const now = price || book.price || detail?.price || 0
+  // 장중 고가·저가는 호가 응답(같은 순간)에 있으면 그걸, 없으면 종목 시세 값
+  const high = Math.max(book.high || 0, detail?.high || 0, now) || 0
+  const lowCands = [book.low, detail?.low, now].filter((v) => v > 0)
+  const low = lowCands.length ? Math.min(...lowCands) : 0
+  const open = book.open || detail?.open || 0
+  const vi = viOn(book.vi_code)
+
+  const item = (label, v, cls) => ({ label, v, cls })
+  const infos = [
+    item('현재가', now, 'ob-i-now'),
+    item('시가', open),
+    item('고가', high),
+    item('저가', low),
+    detail?.upper_limit ? item('상한가', detail.upper_limit) : null,
+    detail?.lower_limit ? item('하한가', detail.lower_limit) : null,
+    { label: 'VI', vi: true },
+  ].filter(Boolean)
+  // 매도 오른칸부터 채우고, 매도 호가 줄이 모자라면 매수 왼칸으로
+  const askInfo = infos.slice(0, asks.length)
+  const bidInfo = infos.slice(asks.length)
+
+  const info = (x) => {
+    if (!x) return null
+    if (x.vi) {
+      return (
+        <span className="ob-info">
+          <small>VI</small>
+          {vi ? <b className="ob-vi">발동</b> : <b className="muted">{book.vi_code == null ? '-' : '없음'}</b>}
+        </span>
+      )
+    }
+    return (
+      <span className={`ob-info ${x.cls || ''}`}>
+        <small>{x.label}</small>
+        <b className={x.v ? tone(x.v - prevClose) : 'muted'}>{x.v ? fmtPrice(x.v) : '-'}</b>
       </span>
-      <span className={`ob-price ${tone(level.price - prevClose)}`}>
-        <b>{fmtPrice(level.price)}</b>
-        <small>{fmtRate(rate(level.price))}</small>
-      </span>
-      <span className="ob-qty ob-right">
-        {side === 'bid' && <><i style={{ width: `${(level.qty / max) * 100}%` }} /><em>{level.qty.toLocaleString()}</em></>}
-      </span>
-    </div>
-  )
+    )
+  }
+
+  const row = (side, level, extra) => {
+    const tags = []
+    if (level.price === high && high) tags.push(<i key="h" className="ob-tag up">고</i>)
+    if (level.price === low && low) tags.push(<i key="l" className="ob-tag down">저</i>)
+    return (
+      <div key={`${side}${level.price}`} className={`ob-row ob-${side}${level.price === now ? ' ob-now' : ''}`}>
+        <span className="ob-qty ob-left">
+          {side === 'ask' ? <><i style={{ width: `${(level.qty / max) * 100}%` }} /><em>{level.qty.toLocaleString()}</em></> : info(extra)}
+        </span>
+        <span className={`ob-price ${tone(level.price - prevClose)}`}>
+          {tags}
+          <b>{fmtPrice(level.price)}</b>
+          <small>{fmtRate(rate(level.price))}</small>
+        </span>
+        <span className="ob-qty ob-right">
+          {side === 'bid' ? <><i style={{ width: `${(level.qty / max) * 100}%` }} /><em>{level.qty.toLocaleString()}</em></> : info(extra)}
+        </span>
+      </div>
+    )
+  }
 
   return (
     <div className="orderbook">
+      {vi && <div className="ob-vi-bar">변동성완화장치(VI) 발동 중 · 단일가 매매</div>}
       <div className="ob-head"><span>매도 잔량</span><span>통합 호가</span><span>매수 잔량</span></div>
-      {asks.map((a) => row('ask', a))}
-      {book.bids.map((b) => row('bid', b))}
+      {asks.map((a, i) => row('ask', a, askInfo[i]))}
+      {book.bids.map((b, i) => row('bid', b, bidInfo[i]))}
       <div className="ob-foot">
         <span className="down">{book.total_ask.toLocaleString()}</span>
         <span className="muted">{book.stale ? '접속 많음 · 잠시 지연' : 'KRX+NXT 합산'}{time ? ` · ${time}` : ''}</span>

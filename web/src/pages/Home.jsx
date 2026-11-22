@@ -48,8 +48,8 @@ function IndexCards() {
   )
 }
 
-function TopValue() {
-  const { rows, loading } = useRanking('amount')
+function TopList({ type }) {
+  const { rows, loading } = useRanking(type)
   if (loading && !rows.length) return <Skeleton rows={5} />
   if (!rows.length) return <div className="card muted-box">순위 정보를 불러오지 못했습니다</div>
   return (
@@ -72,8 +72,11 @@ export default function Home() {
         {current === 'map' ? <ThemeMap /> : <ThemeGrid sort={current} limit={6} />}
         <a className="btn wide" href="#/themes">전체 테마 보기 ({THEME_COUNT}개) →</a>
       </Section>
-      <Section title="거래대금 상위" more={{ href: '#/rank', label: '전체 순위' }}>
-        <TopValue />
+      <Section title="거래대금 상위" more={{ href: '#/rank', label: '전체 순위', onClick: () => sessionStorage.setItem('drm.rank', 'amount') }}>
+        <TopList type="amount" />
+      </Section>
+      <Section title="상승률 상위" more={{ href: '#/rank', label: '전체 순위', onClick: () => sessionStorage.setItem('drm.rank', 'up') }}>
+        <TopList type="up" />
       </Section>
       <Section title="주요 뉴스" more={{ href: '#/market/news', label: '전체 뉴스' }}>
         <Headlines count={5} />

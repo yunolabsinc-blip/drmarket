@@ -164,7 +164,7 @@ export function Section({ title, more, children }) {
       {(title || more) && (
         <div className="section-head">
           <h2>{title}</h2>
-          {more && <a href={more.href} className="more">{more.label} <ChevronIcon /></a>}
+          {more && <a href={more.href} className="more" onClick={more.onClick}>{more.label} <ChevronIcon /></a>}
         </div>
       )}
       {children}
