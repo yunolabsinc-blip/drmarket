@@ -298,7 +298,9 @@ b { font-weight: 650; }
 .ob-left i { right: 0; background: var(--down); }
 .ob-right i { left: 0; background: var(--up); }
 .ob-qty em { position: relative; font-style: normal; color: var(--text-2); font-size: 12.5px; }
-.ob-info { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; width: 100%; font-size: 12px; }
+.ob-info { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; font-size: 12px; }
+.ob-info-v { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.ob-info-v em { font-style: normal; font-size: 10.5px; opacity: 0.85; font-variant-numeric: tabular-nums; }
 .ob-info small { color: var(--text-3); font-size: 11px; }
 .ob-info b { font-weight: 600; font-variant-numeric: tabular-nums; }
 .ob-i-now b { font-weight: 750; }

@@ -97,7 +97,7 @@ export default function OrderBook({ book, failed, prevClose, price, detail }) {
     return (
       <span className={`ob-info ${x.cls || ''}`}>
         <small>{x.label}</small>
-        <b className={x.v ? tone(x.v - prevClose) : 'muted'}>{x.v ? fmtPrice(x.v) : '-'}</b>
+        <span className={`ob-info-v ${x.v ? tone(x.v - prevClose) : 'muted'}`}><b>{x.v ? fmtPrice(x.v) : '-'}</b>{x.v && prevClose ? <em>{fmtRate(rate(x.v))}</em> : null}</span>
       </span>
     )
   }
