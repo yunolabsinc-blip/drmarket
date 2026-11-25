@@ -87,7 +87,16 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: web/dist
+      # GitHub 쪽에서 방금 올린 빌드 결과를 못 찾는 일시 오류가 잦아, 실패하면 30초 뒤 한 번 더 시도
       - name: Deploy to GitHub Pages
         if: steps.check.outputs.deploy == 'true'
         id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+      - name: Wait before retry
+        if: steps.check.outputs.deploy == 'true' && steps.deployment.outcome == 'failure'
+        working-directory: .
+        run: sleep 30
+      - name: Deploy to GitHub Pages (retry)
+        if: steps.check.outputs.deploy == 'true' && steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
