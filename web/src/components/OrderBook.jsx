@@ -48,7 +48,13 @@ export const viOn = (code) => !!code && !['N', '0', '00'].includes(code)
 
 // 10단계 호가: 위쪽 매도(파랑), 아래쪽 매수(빨강), 잔량 막대
 // 매도 쪽 오른칸·매수 쪽 왼칸(비어 있는 자리)에 현재가·시가·고가·저가·상하한·VI를 보여 준다
+// 5호가/10호가 선택은 기기에 기억
+const DEPTH_KEY = 'drm.obDepth'
+const savedDepth = () => { try { return localStorage.getItem(DEPTH_KEY) === '10' ? 10 : 5 } catch { return 5 } }
+
 export default function OrderBook({ book, failed, prevClose, price, detail }) {
+  const [depth, setDepth] = useState(savedDepth)
+  const pickDepth = (n) => { setDepth(n); try { localStorage.setItem(DEPTH_KEY, String(n)) } catch { /* 저장 못 해도 화면은 바뀜 */ } }
 
   if (!book) {
     return failed
@@ -56,9 +62,11 @@ export default function OrderBook({ book, failed, prevClose, price, detail }) {
       : <div className="skeleton chart-skel" />
   }
 
-  const max = Math.max(1, ...book.asks.map((a) => a.qty), ...book.bids.map((b) => b.qty))
+  const shownAsks = book.asks.slice(0, depth)   // 1호가(현재가에 가까운 쪽)부터 depth개
+  const shownBids = book.bids.slice(0, depth)
+  const max = Math.max(1, ...shownAsks.map((a) => a.qty), ...shownBids.map((b) => b.qty))
   const rate = (p) => (prevClose ? ((p - prevClose) / prevClose) * 100 : null)
-  const asks = [...book.asks].reverse()   // 높은 가격이 위로
+  const asks = [...shownAsks].reverse()   // 높은 가격이 위로
   const t = book.time
   const time = t && t.length === 6 ? `${t.slice(0, 2)}:${t.slice(2, 4)}:${t.slice(4)}` : ''
 
@@ -135,11 +143,16 @@ export default function OrderBook({ book, failed, prevClose, price, detail }) {
       {vi && <div className="ob-vi-bar">변동성완화장치(VI) 발동 중 · 단일가 매매</div>}
       <div className="ob-head"><span>매도 잔량</span><span>통합 호가</span><span>매수 잔량</span></div>
       {asks.map((a, i) => row('ask', a, askInfo[i]))}
-      {book.bids.map((b, i) => row('bid', b, bidInfo[i]))}
+      {shownBids.map((b, i) => row('bid', b, bidInfo[i]))}
       <div className="ob-foot">
         <span className="down">{book.total_ask.toLocaleString()}</span>
         <span className="muted">{book.stale ? '접속 많음 · 잠시 지연' : 'KRX+NXT 합산'}{time ? ` · ${time}` : ''}</span>
         <span className="up">{book.total_bid.toLocaleString()}</span>
+      </div>
+      <div className="ob-depth" role="tablist" aria-label="호가 단계">
+        {[5, 10].map((n) => (
+          <button key={n} role="tab" aria-selected={depth === n} className={depth === n ? 'on' : ''} onClick={() => pickDepth(n)}>{n}호가</button>
+        ))}
       </div>
     </div>
   )
