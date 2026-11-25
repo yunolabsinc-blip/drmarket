@@ -72,12 +72,12 @@ export default function OrderBook({ book, failed, prevClose, price, detail }) {
 
   const item = (label, v, cls) => ({ label, v, cls })
   const infos = [
-    item('현재가', now, 'ob-i-now'),
+    item('현재', now, 'ob-i-now'),
     item('시가', open),
     item('고가', high),
     item('저가', low),
-    detail?.upper_limit ? item('상한가', detail.upper_limit) : null,
-    detail?.lower_limit ? item('하한가', detail.lower_limit) : null,
+    detail?.upper_limit ? item('상한', detail.upper_limit) : null,
+    detail?.lower_limit ? item('하한', detail.lower_limit) : null,
     { label: 'VI', vi: true },
   ].filter(Boolean)
   // 매도 오른칸부터 채우고, 매도 호가 줄이 모자라면 매수 왼칸으로
@@ -119,7 +119,7 @@ export default function OrderBook({ book, failed, prevClose, price, detail }) {
           {side === 'ask' ? <><i style={{ width: `${(level.qty / max) * 100}%` }} /><em>{level.qty.toLocaleString()}</em></> : info(extra)}
         </span>
         <span className={`ob-price ${tone(level.price - prevClose)}`}>
-          {tags}
+          {tags.length > 0 && <span className="ob-tags">{tags}</span>}
           <b>{fmtPrice(level.price)}</b>
           <small>{fmtRate(rate(level.price))}</small>
         </span>
@@ -131,7 +131,7 @@ export default function OrderBook({ book, failed, prevClose, price, detail }) {
   }
 
   return (
-    <div className="orderbook">
+    <div className={`orderbook${Math.max(0, ...book.asks.map((a) => a.price), ...book.bids.map((b) => b.price), detail?.upper_limit || 0) >= 1000000 ? ' ob-long' : ''}`}>
       {vi && <div className="ob-vi-bar">변동성완화장치(VI) 발동 중 · 단일가 매매</div>}
       <div className="ob-head"><span>매도 잔량</span><span>통합 호가</span><span>매수 잔량</span></div>
       {asks.map((a, i) => row('ask', a, askInfo[i]))}

@@ -283,16 +283,16 @@ b { font-weight: 650; }
 
 /* ───────── 호가 ───────── */
 .orderbook { padding: 8px 0 10px; font-size: 15px; }
-.ob-head, .ob-foot { display: grid; grid-template-columns: 1fr 1.25fr 1fr; padding: 4px 12px 8px; font-size: 13px; color: var(--text-3); text-align: center; }
+.ob-head, .ob-foot { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr) minmax(0, 1fr); padding: 4px 0 8px; font-size: 13px; color: var(--text-3); text-align: center; }
 .ob-foot { padding: 10px 12px 2px; border-top: 1px solid var(--line); font-weight: 600; font-size: 14.5px; }
-.ob-row { display: grid; grid-template-columns: 1fr 1.25fr 1fr; align-items: stretch; height: 42px; }
+.ob-row { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr) minmax(0, 1fr); align-items: stretch; height: 42px; }
 .ob-ask .ob-price, .ob-ask .ob-left { background: #f6f9ff; }
 .ob-bid .ob-price, .ob-bid .ob-right { background: #fff7f8; }
 .ob-row + .ob-row { border-top: 1px solid #fff; }
-.ob-price { display: flex; align-items: center; justify-content: center; gap: 5px; }
-.ob-price b { font-weight: 700; font-size: 16.5px; font-variant-numeric: tabular-nums; }
-.ob-price small { font-size: 12.5px; opacity: 0.85; font-variant-numeric: tabular-nums; }
-.ob-qty { position: relative; display: flex; align-items: center; padding: 0 8px; }
+.ob-price { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 0 5px 0 16px; overflow: hidden; }
+.ob-price b { font-weight: 700; font-size: 16.5px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.ob-price small { font-size: 12.5px; opacity: 0.85; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; min-width: 4.3em; }
+.ob-qty { position: relative; display: flex; align-items: center; padding: 0 6px; min-width: 0; }
 .ob-qty i { position: absolute; top: 6px; bottom: 6px; border-radius: 3px; opacity: 0.18; }
 .ob-left { justify-content: flex-end; }
 .ob-left i { right: 0; background: var(--down); }
@@ -302,12 +302,21 @@ b { font-weight: 650; }
 .ob-info-v { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
 .ob-info-v em { font-style: normal; font-size: 12px; opacity: 0.85; font-variant-numeric: tabular-nums; }
 .ob-info small { color: var(--text-3); font-size: 12.5px; white-space: nowrap; }
-.ob-info b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ob-info b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ob-i-now b { font-weight: 750; }
 .ob-vi { color: #fff; background: #f08c00; border-radius: 4px; padding: 2px 7px; font-size: 12.5px; }
 .ob-vi-bar { margin: 0 14px 8px; padding: 7px 10px; border-radius: 8px; background: #fff4e0; color: #b35c00; font-size: 14px; font-weight: 650; text-align: center; }
 .ob-now .ob-price { box-shadow: inset 0 0 0 1.5px var(--text); border-radius: 3px; }
 .ob-price { position: relative; }
+.ob-tags { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 2px; z-index: 1; }
+.ob-tags .ob-tag { font-size: 10px; padding: 2px 2px; }
+/* 100만 원 이상 종목: 한 단계 작은 글씨 */
+.ob-long .ob-price b { font-size: 14.5px; }
+.ob-long .ob-price small { font-size: 11px; }
+.ob-long .ob-qty em { font-size: 13px; }
+.ob-long .ob-info { font-size: 12.5px; }
+.ob-long .ob-info small { font-size: 11px; }
+.ob-long .ob-info-v em { font-size: 11px; }
 .ob-tag { font-style: normal; font-size: 11.5px; font-weight: 700; line-height: 1; padding: 3px 4px; border-radius: 4px; color: #fff; }
 .ob-tag-high { background: var(--up); }
 .ob-tag-low { background: var(--down); }
